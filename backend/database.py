@@ -30,6 +30,28 @@ def init_db():
             updated_at  TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS food_library (
+            id                INTEGER PRIMARY KEY,
+            name              TEXT UNIQUE,
+            qty_ref_g         REAL,
+            kcal              REAL,
+            prot_g            REAL,
+            carb_g            REAL,
+            carb_simple_g     REAL,
+            carb_complex_g    REAL,
+            fat_g             REAL,
+            fat_saturated_g   REAL,
+            fat_unsaturated_g REAL,
+            fiber_g           REAL,
+            sodium_mg         REAL,
+            calcium_mg        REAL,
+            iron_mg           REAL,
+            vitamin_c_mg      REAL,
+            potassium_mg      REAL,
+            use_count         INTEGER DEFAULT 1,
+            last_used         TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS meals (
             id                INTEGER PRIMARY KEY AUTOINCREMENT,
             date              TEXT NOT NULL,
@@ -56,6 +78,7 @@ def init_db():
     conn.commit()
     conn.close()
     _migrate_meals()
+    populate_food_library()
 
 
 def _migrate_meals():
@@ -80,6 +103,134 @@ def _migrate_meals():
             pass  # colonne déjà présente
     conn.commit()
     conn.close()
+
+
+# ── Food library ──────────────────────────────────────────────────────────────
+
+_FOOD_KEYS = [
+    "kcal", "prot_g", "carb_g", "carb_simple_g", "carb_complex_g",
+    "fat_g", "fat_saturated_g", "fat_unsaturated_g", "fiber_g",
+    "sodium_mg", "calcium_mg", "iron_mg", "vitamin_c_mg", "potassium_mg",
+]
+
+_UPSERT_SQL = """
+    INSERT INTO food_library (
+        name, qty_ref_g, kcal, prot_g, carb_g, carb_simple_g, carb_complex_g,
+        fat_g, fat_saturated_g, fat_unsaturated_g, fiber_g,
+        sodium_mg, calcium_mg, iron_mg, vitamin_c_mg, potassium_mg,
+        use_count, last_used)
+    VALUES (
+        :name, :qty_ref_g, :kcal, :prot_g, :carb_g, :carb_simple_g, :carb_complex_g,
+        :fat_g, :fat_saturated_g, :fat_unsaturated_g, :fiber_g,
+        :sodium_mg, :calcium_mg, :iron_mg, :vitamin_c_mg, :potassium_mg,
+        1, :last_used)
+    ON CONFLICT(name) DO UPDATE SET
+        qty_ref_g         = ROUND((qty_ref_g * use_count + excluded.qty_ref_g) / (use_count + 1), 1),
+        kcal              = ROUND((kcal * use_count + excluded.kcal) / (use_count + 1), 2),
+        prot_g            = ROUND((prot_g * use_count + excluded.prot_g) / (use_count + 1), 2),
+        carb_g            = ROUND((carb_g * use_count + excluded.carb_g) / (use_count + 1), 2),
+        carb_simple_g     = ROUND((carb_simple_g * use_count + excluded.carb_simple_g) / (use_count + 1), 2),
+        carb_complex_g    = ROUND((carb_complex_g * use_count + excluded.carb_complex_g) / (use_count + 1), 2),
+        fat_g             = ROUND((fat_g * use_count + excluded.fat_g) / (use_count + 1), 2),
+        fat_saturated_g   = ROUND((fat_saturated_g * use_count + excluded.fat_saturated_g) / (use_count + 1), 2),
+        fat_unsaturated_g = ROUND((fat_unsaturated_g * use_count + excluded.fat_unsaturated_g) / (use_count + 1), 2),
+        fiber_g           = ROUND((fiber_g * use_count + excluded.fiber_g) / (use_count + 1), 2),
+        sodium_mg         = ROUND((sodium_mg * use_count + excluded.sodium_mg) / (use_count + 1), 2),
+        calcium_mg        = ROUND((calcium_mg * use_count + excluded.calcium_mg) / (use_count + 1), 2),
+        iron_mg           = ROUND((iron_mg * use_count + excluded.iron_mg) / (use_count + 1), 3),
+        vitamin_c_mg      = ROUND((vitamin_c_mg * use_count + excluded.vitamin_c_mg) / (use_count + 1), 2),
+        potassium_mg      = ROUND((potassium_mg * use_count + excluded.potassium_mg) / (use_count + 1), 2),
+        use_count         = use_count + 1,
+        last_used         = excluded.last_used
+"""
+
+
+def upsert_food_item(name: str, qty_g: float, item: dict, meal_date: str | None = None) -> None:
+    """Insère ou met à jour un aliment (valeurs normalisées à 100g, moyenne pondérée)."""
+    name = name.strip()
+    if not name or not qty_g or qty_g <= 0:
+        return
+    today = meal_date or datetime.utcnow().date().isoformat()
+    scale = 100.0 / qty_g
+    per100 = {k: round((item.get(k) or 0) * scale, 3) for k in _FOOD_KEYS}
+    conn = get_db()
+    conn.execute(_UPSERT_SQL, {"name": name, "qty_ref_g": round(qty_g, 1),
+                                "last_used": today, **per100})
+    conn.commit()
+    conn.close()
+
+
+def populate_food_library() -> int:
+    """Construit la bibliothèque depuis l'historique — seulement si la table est vide."""
+    conn = get_db()
+    existing = conn.execute("SELECT COUNT(*) FROM food_library").fetchone()[0]
+    if existing > 0:
+        conn.close()
+        return existing
+
+    rows = conn.execute(
+        "SELECT items, date FROM meals WHERE items IS NOT NULL ORDER BY date"
+    ).fetchall()
+    conn.close()
+
+    # Accumulateur par nom d'aliment
+    acc: dict[str, dict] = {}
+    for items_json, meal_date in rows:
+        if not items_json:
+            continue
+        try:
+            items = json.loads(items_json)
+        except json.JSONDecodeError:
+            continue
+        for it in items:
+            name = (it.get("name") or "").strip()
+            qty  = it.get("qty_g") or 0
+            if not name or qty <= 0:
+                continue
+            scale = 100.0 / qty
+            if name not in acc:
+                acc[name] = {"n": 0, "qty_sum": 0.0, "last_used": meal_date,
+                             **{k: 0.0 for k in _FOOD_KEYS}}
+            a = acc[name]
+            a["n"]       += 1
+            a["qty_sum"] += qty
+            a["last_used"] = meal_date
+            for k in _FOOD_KEYS:
+                a[k] += (it.get(k) or 0) * scale
+
+    conn = get_db()
+    for name, a in acc.items():
+        n = a["n"]
+        per100 = {k: round(a[k] / n, 3) for k in _FOOD_KEYS}
+        conn.execute(_UPSERT_SQL, {
+            "name": name, "qty_ref_g": round(a["qty_sum"] / n, 1),
+            "last_used": a["last_used"], **per100,
+        })
+    conn.commit()
+    inserted = conn.execute("SELECT COUNT(*) FROM food_library").fetchone()[0]
+    conn.close()
+    if inserted:
+        print(f"[db] food_library : {inserted} aliments indexés depuis l'historique")
+    return inserted
+
+
+def get_food_from_library(name: str) -> dict | None:
+    """Correspondance insensible à la casse."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM food_library WHERE lower(name) = lower(?)", (name,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_food_library() -> list[dict]:
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM food_library ORDER BY use_count DESC, name ASC"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 # ── Macro calculation ─────────────────────────────────────────────────────────

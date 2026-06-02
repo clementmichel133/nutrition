@@ -201,6 +201,13 @@ def get_history(days: int = Query(default=7, ge=1, le=30)):
     return db.get_history(days)
 
 
+# ── Food library ─────────────────────────────────────────────────────────────
+
+@app.get("/food-library")
+def food_library():
+    return db.get_food_library()
+
+
 # ── Admin ────────────────────────────────────────────────────────────────────
 
 ADMIN_KEY = "nutrition-seed-2026"
@@ -217,12 +224,17 @@ def admin_seed(x_admin_key: str | None = Header(default=None)):
 
 # ── Plan semaine ─────────────────────────────────────────────────────────────
 
+class WeeklyPlanRequest(BaseModel):
+    meal_types: list[str] = ["petit_dej", "dejeuner", "diner"]
+    batch_size: int = 4
+
+
 @app.post("/weekly-plan")
-async def weekly_plan():
+async def weekly_plan(req: WeeklyPlanRequest = WeeklyPlanRequest()):
     import ai
     profile = db.get_profile()
     history = db.get_history(14)
-    return await ai.generate_weekly_plan(profile, history)
+    return await ai.generate_weekly_plan(profile, history, req.meal_types, req.batch_size)
 
 
 # ── Frontend statique ─────────────────────────────────────────────────────────

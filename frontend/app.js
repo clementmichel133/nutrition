@@ -4,17 +4,20 @@
 const API = window.location.origin;
 
 const S = {
-  today:         null,
-  profile:       null,
-  mealType:      null,
-  pendingItems:  [],
-  mediaRecorder: null,
-  audioChunks:   [],
-  isRecording:   false,
-  gender:        'homme',
-  goal:          null,
-  historyDays:   7,
-  charts:        { kcal: null, macros: null },
+  today:              null,
+  profile:            null,
+  mealType:           null,
+  pendingItems:       [],
+  mediaRecorder:      null,
+  audioChunks:        [],
+  isRecording:        false,
+  gender:             'homme',
+  goal:               null,
+  historyDays:        7,
+  charts:             { kcal: null, macros: null },
+  weekPlanConfig:     { meal_types: ['petit_dej', 'dejeuner', 'diner'], batch_size: 4 },
+  weeklyPlan:         null,
+  addedPlannedMeals:  new Set(),
 };
 
 const MEALS = {
@@ -26,7 +29,8 @@ const MEALS = {
 
 const CIRC = 2 * Math.PI * 66; // circumference for r=66
 
-let _recentMeals = []; // cache pour la modal de saisie
+let _recentMeals  = []; // cache pour la modal de saisie
+let _foodLibrary  = []; // cache bibliothèque aliments
 
 // ════════════════════════════════════════════════════════════════════════════
 // INIT
@@ -558,49 +562,102 @@ function openInputModal(mealType) {
 
 // ─── Repas récents ────────────────────────────────────────────────────────────
 
-async function loadRecentMeals(mealType) {
-  try {
-    const meals = await api(`/meals/recent/${mealType}?limit=5`);
-    _recentMeals = meals;
+// ─── Planned meals helpers ────────────────────────────────────────────────────
 
-    if (!meals.length) return; // section reste masquée
-
-    const today = new Date();
-    const scroll = document.getElementById('recent-meals-scroll');
-
-    scroll.innerHTML = meals.map((m, i) => {
-      const mealDate = new Date(m.date + 'T12:00');
-      const diffDays = Math.round((today - mealDate) / 86_400_000);
-      const dayLabel = diffDays === 1 ? 'hier'
-                     : diffDays === 0 ? 'aujourd\'hui'
-                     : `il y a ${diffDays} j`;
-
-      const items = m.items || [];
-      const preview = items.slice(0, 3).map(it => it.name).join(' · ')
-                    + (items.length > 3 ? ` +${items.length - 3}` : '');
-
-      return `
-        <div class="recent-card" onclick="reuseRecentMeal(${i})">
-          <div class="recent-kcal">${Math.round(m.total_kcal)} kcal</div>
-          <div class="recent-items">${preview}</div>
-          <div class="recent-date">${dayLabel}</div>
-          <button class="btn-recent-add"
-                  onclick="event.stopPropagation(); reuseRecentMeal(${i})">
-            Ajouter
-          </button>
-        </div>`;
-    }).join('');
-
-    document.getElementById('recent-meals-section').classList.remove('hidden');
-  } catch (_) {
-    // historique inaccessible → on garde la section masquée
+function getPlannedMeals(mealType) {
+  if (!S.weeklyPlan?.days) return [];
+  const seen = new Set();
+  const result = [];
+  for (const day of S.weeklyPlan.days) {
+    const m = day.meals?.[mealType];
+    if (m?.name && !seen.has(m.name)) {
+      seen.add(m.name);
+      result.push({ ...m, _day: day.day, _added: S.addedPlannedMeals.has(m.name) });
+    }
   }
+  return result;
 }
 
-function reuseRecentMeal(idx) {
-  const meal = _recentMeals[idx];
-  if (!meal?.items?.length) return;
-  openConfirmModal(meal.items); // réutilise la modal de confirmation existante
+async function loadRecentMeals(mealType) {
+  const section = document.getElementById('recent-meals-section');
+  const scroll  = document.getElementById('recent-meals-scroll');
+
+  // Planned meals first
+  const planned = getPlannedMeals(mealType)
+    .map(p => ({ _type: 'planned', _plan: p, total_kcal: p.kcal || 0 }));
+
+  // Historical meals
+  let historical = [];
+  try {
+    historical = (await api(`/meals/recent/${mealType}?limit=5`))
+      .map(h => ({ _type: 'history', ...h }));
+  } catch (_) {}
+
+  _recentMeals = [...planned, ...historical];
+  if (!_recentMeals.length) { section.classList.add('hidden'); return; }
+
+  const today = new Date();
+  scroll.innerHTML = _recentMeals.map((m, i) => {
+    if (m._type === 'planned') {
+      const p = m._plan;
+      const preview = (p.items || []).slice(0, 2).join(' · ')
+                    + ((p.items?.length > 2) ? ` +${p.items.length - 2}` : '');
+      const isAdded = p._added;
+      return `
+        <div class="recent-card" style="${isAdded ? 'opacity:.55;' : ''}" onclick="reuseRecentMeal(${i})">
+          <div class="recent-kcal">${p.kcal || '–'} kcal</div>
+          <div class="recent-items">${preview || p.name}</div>
+          <div class="recent-date" style="color:var(--orange);font-weight:800;">📅 ${p._day}</div>
+          <button class="btn-recent-add" style="background:var(--orange);"
+                  onclick="event.stopPropagation(); reuseRecentMeal(${i})">
+            ${isAdded ? '✓ Ajouté' : 'Planifié'}
+          </button>
+        </div>`;
+    }
+    // Historical
+    const mealDate = new Date(m.date + 'T12:00');
+    const diffDays = Math.round((today - mealDate) / 86_400_000);
+    const dayLabel = diffDays === 1 ? 'hier' : diffDays === 0 ? 'aujourd\'hui' : `il y a ${diffDays} j`;
+    const items = m.items || [];
+    const preview = items.slice(0, 3).map(it => it.name).join(' · ')
+                  + (items.length > 3 ? ` +${items.length - 3}` : '');
+    return `
+      <div class="recent-card" onclick="reuseRecentMeal(${i})">
+        <div class="recent-kcal">${Math.round(m.total_kcal)} kcal</div>
+        <div class="recent-items">${preview}</div>
+        <div class="recent-date">${dayLabel}</div>
+        <button class="btn-recent-add" onclick="event.stopPropagation(); reuseRecentMeal(${i})">
+          Ajouter
+        </button>
+      </div>`;
+  }).join('');
+
+  section.classList.remove('hidden');
+}
+
+async function reuseRecentMeal(idx) {
+  const m = _recentMeals[idx];
+  if (!m) return;
+
+  if (m._type === 'planned') {
+    const plan  = m._plan;
+    const items = plan.items || [];
+    if (!items.length) return;
+    closeInputModal();
+    try {
+      const data = await api('/meals/text', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ text: items.join(', ') }),
+      });
+      S.addedPlannedMeals.add(plan.name);
+      openConfirmModal(data.items);
+    } catch (e) { toast('❌ ' + e.message); }
+    return;
+  }
+
+  if (!m.items?.length) return;
+  openConfirmModal(m.items);
 }
 
 function closeInputModal() {
@@ -629,6 +686,8 @@ function showMode(mode) {
   if (mode === 'manual') {
     document.getElementById('manual-text').value = '';
     document.getElementById('manual-loader').classList.add('hidden');
+    document.getElementById('food-lib-search').value = '';
+    loadFoodLibrary();
   }
 }
 
@@ -836,6 +895,7 @@ const DAY_META = [
 const MEAL_TYPE_META = {
   petit_dej: { label: 'Petit déjeuner', emoji: '🌅' },
   dejeuner:  { label: 'Déjeuner',       emoji: '🌞' },
+  gouter:    { label: 'Goûter',         emoji: '🍎' },
   diner:     { label: 'Dîner',          emoji: '🌙' },
 };
 
@@ -848,7 +908,21 @@ const SHOP_ICONS = {
   'Épicerie':           '🫙',
 };
 
+function setBatchSize(n) {
+  S.weekPlanConfig.batch_size = n;
+  document.querySelectorAll('.batch-btn').forEach(btn => {
+    btn.classList.toggle('active', +btn.dataset.n === n);
+  });
+}
+
 async function generateWeeklyPlan() {
+  const allTypes = ['petit_dej', 'dejeuner', 'gouter', 'diner'];
+  const mealTypes = allTypes.filter(t => document.getElementById('wc-' + t)?.checked);
+  if (!mealTypes.length) { toast('⚠️ Sélectionne au moins un repas'); return; }
+
+  S.weekPlanConfig.meal_types = mealTypes;
+  S.addedPlannedMeals = new Set();
+
   const btn = document.getElementById('btn-generate-week');
   btn.disabled = true;
   document.getElementById('week-loader').classList.remove('hidden');
@@ -856,7 +930,12 @@ async function generateWeeklyPlan() {
   document.getElementById('week-shopping').classList.add('hidden');
 
   try {
-    const data = await api('/weekly-plan', { method: 'POST' });
+    const data = await api('/weekly-plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(S.weekPlanConfig),
+    });
+    S.weeklyPlan = data;
     renderWeeklyPlan(data);
     toast('✅ Plan semaine généré !');
   } catch (e) {
@@ -876,12 +955,13 @@ function renderWeeklyPlan(data) {
     const meals  = d.meals || {};
     const isFirst = i === 0;
 
-    const mealsHtml = ['petit_dej', 'dejeuner', 'diner'].map(type => {
+    const batchN    = S.weekPlanConfig.batch_size;
+    const mealsHtml = Object.keys(meals).map(type => {
       const m  = meals[type];
       if (!m) return '';
-      const mt = MEAL_TYPE_META[type];
+      const mt = MEAL_TYPE_META[type] || { label: type, emoji: '🍽️' };
       const batchBadge = m.batch
-        ? '<span class="batch-badge">🍳 Batch</span>' : '';
+        ? `<span class="batch-badge">🍳 Batch ×${batchN}</span>` : '';
       const itemsHtml = (m.items || [])
         .map(it => `<div class="week-meal-item">${it}</div>`).join('');
 
@@ -894,7 +974,11 @@ function renderWeeklyPlan(data) {
           </div>
           <div class="week-meal-name">${m.name}</div>
           ${itemsHtml}
-          <div class="week-meal-macros">${m.kcal} kcal &nbsp;·&nbsp; ${m.prot_g}g protéines</div>
+          <div class="week-meal-macros">
+            ${m.kcal} kcal &nbsp;·&nbsp; P&nbsp;${m.prot_g}g
+            ${m.carb_g != null ? `&nbsp;·&nbsp; G&nbsp;${m.carb_g}g` : ''}
+            ${m.fat_g  != null ? `&nbsp;·&nbsp; L&nbsp;${m.fat_g}g`  : ''}
+          </div>
         </div>`;
     }).join('');
 
@@ -963,4 +1047,65 @@ function toggleShopItem(id) {
   const row = document.getElementById('shoprow-' + id);
   const cb  = document.getElementById(id);
   row.classList.toggle('shop-checked', cb.checked);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// FOOD LIBRARY
+// ════════════════════════════════════════════════════════════════════════════
+
+async function loadFoodLibrary() {
+  try {
+    _foodLibrary = await api('/food-library');
+    const countEl = document.getElementById('food-lib-count');
+    if (countEl) countEl.textContent = _foodLibrary.length + ' aliments';
+    renderFoodLib(_foodLibrary);
+  } catch (_) {
+    renderFoodLib([]);
+  }
+}
+
+function filterFoodLib(query) {
+  const q = query.toLowerCase().trim();
+  renderFoodLib(q
+    ? _foodLibrary.filter(f => f.name.toLowerCase().includes(q))
+    : _foodLibrary
+  );
+}
+
+function renderFoodLib(items) {
+  const el = document.getElementById('food-lib-list');
+  if (!el) return;
+
+  if (!items.length) {
+    el.innerHTML = '<p style="text-align:center;color:var(--light);font-size:12px;padding:8px 0;">Aucun aliment trouvé</p>';
+    return;
+  }
+
+  el.innerHTML = items.slice(0, 40).map(f => {
+    const kcalPortion = Math.round((f.kcal || 0) * (f.qty_ref_g || 100) / 100);
+    const badge = f.use_count > 2
+      ? '<span class="food-lib-badge">✓ connu</span>' : '';
+    const safeName = f.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    return `
+      <div class="food-lib-item" onclick="selectFoodLibItem('${safeName}', ${f.qty_ref_g || 100})">
+        <span class="food-lib-name">${f.name}</span>
+        <span class="food-lib-meta">${Math.round(f.qty_ref_g || 100)}g · ${kcalPortion} kcal</span>
+        ${badge}
+      </div>`;
+  }).join('');
+}
+
+function selectFoodLibItem(name, qtyRef) {
+  const ta = document.getElementById('manual-text');
+  const current = ta.value.trim();
+  const addition = `${name} ${Math.round(qtyRef)}g`;
+  ta.value = current ? current + ', ' + addition : addition;
+
+  // Reset search + scroll list back to top
+  const searchEl = document.getElementById('food-lib-search');
+  if (searchEl) { searchEl.value = ''; filterFoodLib(''); }
+  const listEl = document.getElementById('food-lib-list');
+  if (listEl) listEl.scrollTop = 0;
+
+  ta.focus();
 }

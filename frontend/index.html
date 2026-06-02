@@ -327,6 +327,61 @@
     .bounce { animation: bounce .5s ease; }
     @keyframes confettiFall { 0% { transform: translateY(-20px) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
 
+    /* ── Configurateur plan semaine ── */
+    .config-label {
+      font-size: 11px; font-weight: 800; text-transform: uppercase;
+      letter-spacing: .5px; color: var(--mid); margin-bottom: 10px; display: block;
+    }
+    .config-meals-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 18px; }
+    .config-meal-check {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 12px; border-radius: 12px; background: var(--beige);
+      cursor: pointer; font-size: 13px; font-weight: 700; color: var(--dark);
+      transition: background .2s; user-select: none;
+    }
+    .config-meal-check input { accent-color: var(--sage); width: 16px; height: 16px; flex-shrink: 0; }
+    .config-meal-check:has(input:checked) { background: var(--sage-bg); }
+
+    .config-batch-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .batch-btn {
+      width: 46px; height: 46px; border-radius: 12px;
+      border: 2px solid var(--beige-dk); background: var(--beige);
+      font-family: 'Nunito', sans-serif; font-size: 17px; font-weight: 900; color: var(--mid);
+      cursor: pointer; transition: all .2s;
+    }
+    .batch-btn.active { border-color: var(--sage); background: var(--sage-bg); color: var(--sage); }
+    .batch-hint  { font-size: 13px; color: var(--mid); font-weight: 600; }
+    .config-hint { font-size: 12px; color: var(--light); font-weight: 600; line-height: 1.4; margin-top: 4px; }
+
+    /* ── Food library (modal) ── */
+    .food-lib-search {
+      width: 100%; padding: 8px 12px;
+      border-radius: 10px; border: 2px solid var(--beige-dk);
+      background: var(--beige);
+      font-family: 'Nunito', sans-serif; font-size: 13px; font-weight: 600; color: var(--dark);
+      outline: none; transition: border-color .2s; margin-bottom: 6px;
+    }
+    .food-lib-search:focus { border-color: var(--sage); }
+
+    .food-lib-list {
+      max-height: 172px; overflow-y: auto;
+      scrollbar-width: thin; scrollbar-color: var(--beige-dk) transparent;
+    }
+    .food-lib-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 4px; border-bottom: 1px solid var(--beige);
+      cursor: pointer; border-radius: 4px; transition: background .15s;
+    }
+    .food-lib-item:last-child { border-bottom: none; }
+    .food-lib-item:hover { background: var(--sage-bg); }
+    .food-lib-name { flex: 1; font-size: 13px; font-weight: 700; color: var(--dark); }
+    .food-lib-meta { font-size: 11px; color: var(--mid); font-weight: 600; white-space: nowrap; }
+    .food-lib-badge {
+      padding: 1px 7px; border-radius: 20px;
+      background: var(--sage-bg); color: var(--sage);
+      font-size: 9px; font-weight: 800; white-space: nowrap;
+    }
+
     /* ── Repas récents (modal) ── */
     .recent-scroll {
       display: flex; gap: 10px;
@@ -734,15 +789,44 @@
     <!-- ═══ TAB SEMAINE ═══ -->
     <section id="tab-week" class="tab-pane">
 
-      <div class="card">
+      <!-- Configurateur -->
+      <div class="card" id="week-config">
         <span class="deco" style="top:-12px;right:-10px;">🗓️</span>
         <div class="card-title">Plan de la semaine</div>
-        <p style="font-size:13px;color:var(--mid);font-weight:600;line-height:1.6;margin-bottom:16px;">
-          Claude génère ton plan repas Lundi–Vendredi adapté à tes objectifs,
-          avec liste de courses pour le batch cooking du dimanche.
-        </p>
-        <button class="btn-primary" id="btn-generate-week" onclick="generateWeeklyPlan()">
-          Générer ma semaine avec Claude
+
+        <!-- Repas à planifier -->
+        <span class="config-label">Repas à planifier</span>
+        <div class="config-meals-grid">
+          <label class="config-meal-check">
+            <input type="checkbox" id="wc-petit_dej" checked>
+            🌅 Petit déjeuner
+          </label>
+          <label class="config-meal-check">
+            <input type="checkbox" id="wc-dejeuner" checked>
+            🌞 Déjeuner
+          </label>
+          <label class="config-meal-check">
+            <input type="checkbox" id="wc-gouter">
+            🍎 Goûter
+          </label>
+          <label class="config-meal-check">
+            <input type="checkbox" id="wc-diner" checked>
+            🌙 Dîner
+          </label>
+        </div>
+
+        <!-- Taille des batchs -->
+        <span class="config-label">Taille des batchs</span>
+        <div class="config-batch-row">
+          <button class="batch-btn"        data-n="2" onclick="setBatchSize(2)">2</button>
+          <button class="batch-btn active" data-n="4" onclick="setBatchSize(4)">4</button>
+          <button class="batch-btn"        data-n="6" onclick="setBatchSize(6)">6</button>
+          <span class="batch-hint">portions</span>
+        </div>
+        <p class="config-hint">🍳 Je cuisine la veille au soir pour le lendemain</p>
+
+        <button class="btn-primary mt16" id="btn-generate-week" onclick="generateWeeklyPlan()">
+          Générer ma semaine →
         </button>
         <div id="week-loader" class="hidden mt12">
           <div class="spinner"></div>
@@ -839,6 +923,24 @@
           onfocus="this.style.borderColor='var(--sage)'" onblur="this.style.borderColor='var(--beige-dk)'"></textarea>
         <button class="btn-primary mt12" onclick="analyzeManual()">Analyser avec Claude</button>
         <div id="manual-loader" class="hidden mt12"><div class="spinner"></div><p class="loading-msg">Claude analyse ton repas…</p></div>
+
+        <!-- Bibliothèque d'aliments -->
+        <div id="food-lib-wrap" style="margin-top:16px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--mid);">
+              📚 Mes aliments
+            </span>
+            <span id="food-lib-count" style="font-size:10px;color:var(--light);font-weight:600;"></span>
+          </div>
+          <input id="food-lib-search" class="food-lib-search" type="search"
+                 placeholder="Filtrer par nom…" oninput="filterFoodLib(this.value)" />
+          <div id="food-lib-list" class="food-lib-list">
+            <p style="text-align:center;color:var(--light);font-size:12px;padding:8px 0;">
+              Chargement…
+            </p>
+          </div>
+        </div>
+
         <button class="btn-secondary" onclick="showMode(null)">← Retour</button>
       </div>
     </div>
