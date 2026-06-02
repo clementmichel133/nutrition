@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>🌿 Nutrition</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --sage:      #7D9B76;
+      --sage-lt:   #A8C4A2;
+      --sage-bg:   #EBF4EA;
+      --beige:     #F5F0E0;
+      --beige-dk:  #E4DCCA;
+      --orange:    #F4A35A;
+      --orange-bg: #FEF5E8;
+      --peach:     #F9C784;
+      --peach-bg:  #FDF6E8;
+      --dark:      #3A3328;
+      --mid:       #7A7264;
+      --light:     #B0A898;
+      --white:     #FFFFFF;
+      --red:       #E57373;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Nunito', sans-serif;
+      background: var(--beige);
+      color: var(--dark);
+      max-width: 430px;
+      margin: 0 auto;
+      min-height: 100vh;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body::after {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* ── Layout ── */
+    .app-header {
+      position: fixed; top: 0; left: 50%; transform: translateX(-50%);
+      width: 100%; max-width: 430px; height: 58px;
+      background: var(--sage);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px; z-index: 200;
+      box-shadow: 0 2px 16px rgba(61,72,58,.25);
+    }
+    .header-logo { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 20px; color: #fff; letter-spacing: -0.5px; }
+    .header-date { font-size: 11px; color: rgba(255,255,255,.8); font-weight: 700; text-align: right; line-height: 1.4; }
+
+    .bottom-nav {
+      position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 100%; max-width: 430px; height: 62px;
+      background: var(--white); border-top: 1.5px solid var(--beige-dk);
+      display: flex; z-index: 200;
+      box-shadow: 0 -3px 16px rgba(0,0,0,.06);
+    }
+    .nav-tab {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 2px; font-family: 'Nunito', sans-serif; font-size: 9.5px; font-weight: 800;
+      text-transform: uppercase; letter-spacing: .4px; color: var(--light);
+      cursor: pointer; border: none; background: none; transition: color .2s; padding: 6px 0 8px;
+    }
+    .nav-tab .ti { font-size: 22px; line-height: 1; transition: transform .2s; }
+    .nav-tab.active { color: var(--sage); }
+    .nav-tab.active .ti { transform: scale(1.15); }
+
+    .main-content { padding-top: 58px; padding-bottom: 62px; min-height: 100vh; }
+    .tab-pane { display: none; padding: 14px 14px 6px; }
+    .tab-pane.active { display: block; }
+
+    /* ── Card ── */
+    .card {
+      background: var(--white); border-radius: 20px; padding: 18px;
+      box-shadow: 0 3px 14px rgba(0,0,0,.055); margin-bottom: 14px;
+      position: relative; overflow: hidden;
+    }
+    .card-title { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 700; margin-bottom: 14px; color: var(--dark); }
+
+    /* ── Calorie ring ── */
+    .ring-wrap  { display: flex; flex-direction: column; align-items: center; padding: 4px 0 12px; }
+    .ring-rel   { position: relative; width: 164px; height: 164px; }
+    .ring-svg   { transform: rotate(-90deg); }
+    .ring-bg    { fill: none; stroke: var(--beige-dk); stroke-width: 13; }
+    .ring-fg    { fill: none; stroke: var(--sage); stroke-width: 13; stroke-linecap: round; transition: stroke-dashoffset .9s cubic-bezier(.4,0,.2,1); }
+    .ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .ring-num   { font-size: 34px; font-weight: 900; line-height: 1; color: var(--dark); }
+    .ring-sub   { font-size: 11px; color: var(--mid); font-weight: 700; margin-top: 2px; }
+
+    /* ── Macro pills (résumé) ── */
+    .macro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .mpill { border-radius: 14px; padding: 11px 13px; display: flex; flex-direction: column; gap: 3px; }
+    .mpill-prot { background: var(--sage-bg); }
+    .mpill-carb { background: var(--orange-bg); }
+    .mpill-fat  { background: var(--peach-bg); }
+    .mpill-cal  { background: #FFF0F5; }
+    .mpill-name { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: var(--mid); }
+    .mpill-row  { display: flex; align-items: baseline; gap: 2px; }
+    .mpill-val  { font-size: 22px; font-weight: 900; line-height: 1; color: var(--dark); }
+    .mpill-unit { font-size: 11px; color: var(--mid); font-weight: 600; }
+    .mpill-sub  { font-size: 10px; color: var(--light); }
+    .mbar-wrap  { height: 4px; background: rgba(0,0,0,.08); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+    .mbar       { height: 100%; border-radius: 2px; transition: width .9s cubic-bezier(.4,0,.2,1); }
+    .mpill-prot .mbar { background: var(--sage); }
+    .mpill-carb .mbar { background: var(--orange); }
+    .mpill-fat  .mbar { background: var(--peach); }
+    .mpill-cal  .mbar { background: #f87171; }
+
+    /* ── Meal cards ── */
+    .meal-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .meal-hd-left { display: flex; align-items: center; gap: 8px; }
+    .meal-emoji { font-size: 22px; line-height: 1; }
+    .meal-name  { font-size: 15px; font-weight: 800; }
+    .meal-kcal-lbl { font-size: 12px; color: var(--mid); font-weight: 700; }
+    .meal-item-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--beige); }
+    .meal-item-row:last-of-type { border-bottom: none; }
+    .item-dot  { width: 6px; height: 6px; border-radius: 50%; background: var(--sage-lt); flex-shrink: 0; }
+    .item-name { flex: 1; font-size: 13px; font-weight: 700; }
+    .item-info { font-size: 11px; color: var(--mid); }
+    .item-del  { font-size: 14px; color: var(--light); cursor: pointer; padding: 2px 4px; transition: color .15s; }
+    .item-del:hover { color: var(--red); }
+    .meal-empty { text-align: center; padding: 10px 0; font-size: 13px; color: var(--light); font-weight: 600; }
+    .btn-add {
+      width: 100%; margin-top: 12px; padding: 10px;
+      background: var(--beige); border: 2px dashed var(--sage-lt); border-radius: 12px;
+      font-family: 'Nunito', sans-serif; font-size: 13px; font-weight: 800; color: var(--sage);
+      cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;
+      transition: background .2s, border-color .2s;
+    }
+    .btn-add:hover { background: var(--sage-bg); border-color: var(--sage); }
+
+    .btn-meal-plus {
+      width: 34px; height: 34px; border-radius: 50%;
+      background: var(--sage); color: white; border: none;
+      font-size: 24px; font-weight: 300; line-height: 1;
+      cursor: pointer; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 10px rgba(125,155,118,.4);
+      transition: transform .15s, box-shadow .15s;
+    }
+    .btn-meal-plus:active { transform: scale(.88); box-shadow: none; }
+
+    /* ── Macro cards (onglet Macros) ── */
+    .mcard { border-left: 4px solid transparent; }
+    .mcard-carb  { border-left-color: var(--orange); }
+    .mcard-fat   { border-left-color: var(--peach); }
+    .mcard-prot  { border-left-color: var(--sage); }
+    .mcard-fiber { border-left-color: #a78bfa; }
+    .mcard-micro { border-left-color: #64b5f6; }
+    .mcard-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .mcard-icon { width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+    .mcard-title-wrap { flex: 1; }
+    .mcard-name { font-size: 15px; font-weight: 800; }
+    .mcard-sub  { font-size: 11px; color: var(--mid); margin-top: 1px; }
+    .mcard-total { text-align: right; }
+    .mcard-total .tv { font-size: 24px; font-weight: 900; }
+    .mcard-total .tu { font-size: 12px; color: var(--mid); }
+    .main-bar-wrap { height: 8px; background: var(--beige-dk); border-radius: 4px; overflow: hidden; margin-bottom: 10px; }
+    .main-bar { height: 100%; border-radius: 4px; transition: width .9s cubic-bezier(.4,0,.2,1); }
+    .split-section-title { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: var(--mid); margin-bottom: 6px; }
+    .stacked-bar { height: 8px; border-radius: 4px; overflow: hidden; display: flex; background: var(--beige-dk); }
+    .stacked-seg { height: 100%; transition: flex .9s cubic-bezier(.4,0,.2,1); min-width: 0; }
+    .split-row { display: flex; justify-content: space-between; margin-top: 6px; gap: 4px; }
+    .split-item { flex: 1; display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: var(--mid); }
+    .split-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .split-val { font-weight: 900; color: var(--dark); }
+    .split-pct { color: var(--light); }
+    .prot-extra { font-size: 12px; color: var(--mid); font-weight: 600; margin-top: 4px; }
+    .fiber-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 800; margin-top: 8px; }
+    .micro-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--beige); }
+    .micro-row:last-of-type { border-bottom: none; }
+    .micro-icon   { font-size: 17px; width: 26px; text-align: center; flex-shrink: 0; }
+    .micro-info   { flex: 1; min-width: 0; }
+    .micro-name   { font-size: 12px; font-weight: 800; }
+    .micro-target { font-size: 10px; color: var(--mid); }
+    .micro-bwrap  { height: 4px; background: var(--beige-dk); border-radius: 2px; overflow: hidden; margin-top: 3px; }
+    .micro-bar    { height: 100%; border-radius: 2px; transition: width .9s ease; }
+    .micro-val    { font-size: 13px; font-weight: 900; flex-shrink: 0; min-width: 54px; text-align: right; }
+    .approx-note  { font-size: 10px; color: var(--light); text-align: center; margin-top: 14px; font-style: italic; }
+
+    /* ── History ── */
+    .period-toggle { display: flex; gap: 8px; }
+    .period-btn {
+      flex: 1; padding: 8px; border-radius: 10px;
+      border: 2px solid var(--beige-dk); background: var(--beige);
+      font-family: 'Nunito', sans-serif; font-size: 13px; font-weight: 800; color: var(--mid);
+      cursor: pointer; transition: all .2s;
+    }
+    .period-btn.active { border-color: var(--sage); background: var(--sage-bg); color: var(--sage); }
+    .history-row { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--beige); }
+    .history-row:last-child { border-bottom: none; }
+    .hist-date   { font-size: 14px; font-weight: 800; }
+    .hist-macros { font-size: 11px; color: var(--mid); margin-top: 2px; }
+    .hist-kcal   { font-size: 17px; font-weight: 900; color: var(--sage); }
+
+    /* ── Profile ── */
+    .form-label { display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .6px; color: var(--mid); margin-bottom: 6px; }
+    .form-input {
+      width: 100%; padding: 12px 14px;
+      background: var(--beige); border: 2px solid transparent; border-radius: 12px;
+      font-family: 'Nunito', sans-serif; font-size: 15px; font-weight: 600; color: var(--dark);
+      outline: none; transition: border-color .2s; -webkit-appearance: none;
+    }
+    .form-input:focus { border-color: var(--sage); background: #fff; }
+    .gender-row { display: flex; gap: 8px; }
+    .gender-btn {
+      flex: 1; padding: 10px 6px; border-radius: 12px;
+      border: 2px solid var(--beige-dk); background: var(--beige);
+      cursor: pointer; text-align: center;
+      font-family: 'Nunito', sans-serif; font-size: 12px; font-weight: 800; color: var(--mid); transition: all .2s;
+    }
+    .gender-btn.active { border-color: var(--sage); background: var(--sage-bg); color: var(--sage); }
+    .gender-btn .gi { font-size: 22px; display: block; margin-bottom: 3px; }
+    .goal-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .goal-btn {
+      padding: 11px 4px; border-radius: 12px;
+      border: 2px solid var(--beige-dk); background: var(--beige);
+      cursor: pointer; text-align: center;
+      font-family: 'Nunito', sans-serif; font-size: 11px; font-weight: 800; color: var(--mid); transition: all .2s;
+    }
+    .goal-btn.active { border-color: var(--sage); background: var(--sage-bg); color: var(--sage); }
+    .goal-btn .gi { font-size: 22px; display: block; margin-bottom: 4px; }
+    .target-box { background: linear-gradient(135deg, var(--sage) 0%, var(--sage-lt) 100%); border-radius: 16px; padding: 16px 18px; color: white; margin-top: 16px; }
+    .target-box-title { font-family: 'Playfair Display', serif; font-size: 15px; margin-bottom: 10px; }
+    .target-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; }
+    .target-lbl { font-size: 12px; opacity: .85; font-weight: 600; }
+    .target-val { font-size: 15px; font-weight: 900; }
+
+    /* ── Buttons ── */
+    .btn-primary {
+      width: 100%; padding: 14px; background: var(--sage); color: white; border: none; border-radius: 16px;
+      font-family: 'Nunito', sans-serif; font-size: 15px; font-weight: 900; cursor: pointer; letter-spacing: .3px;
+      box-shadow: 0 4px 14px rgba(125,155,118,.35); transition: opacity .2s, transform .1s;
+    }
+    .btn-primary:active { transform: scale(.98); }
+    .btn-secondary {
+      width: 100%; padding: 12px; margin-top: 10px;
+      background: transparent; color: var(--mid); border: 2px solid var(--beige-dk); border-radius: 14px;
+      font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 700; cursor: pointer; transition: background .2s;
+    }
+    .btn-secondary:hover { background: var(--beige); }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(40,35,28,.55); backdrop-filter: blur(5px);
+      z-index: 300; display: flex; align-items: flex-end; justify-content: center;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal-sheet {
+      background: var(--white); border-radius: 24px 24px 0 0; padding: 0 18px 36px;
+      width: 100%; max-width: 430px; max-height: 92vh; overflow-y: auto;
+      animation: slideUp .28s cubic-bezier(.32,0,.16,1);
+    }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    .modal-handle { width: 36px; height: 4px; background: var(--beige-dk); border-radius: 2px; margin: 14px auto 18px; }
+    .modal-title { font-family: 'Playfair Display', serif; font-size: 18px; margin-bottom: 4px; }
+    .modal-sub   { font-size: 12px; color: var(--mid); font-weight: 600; margin-bottom: 14px; }
+
+    /* ── Input mode ── */
+    .mode-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 6px 0 16px; }
+    .mode-btn {
+      display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 6px;
+      border-radius: 16px; border: 2px solid var(--beige-dk); background: var(--beige); cursor: pointer;
+      font-family: 'Nunito', sans-serif; font-size: 11.5px; font-weight: 800; color: var(--dark); transition: all .2s;
+    }
+    .mode-btn:hover { border-color: var(--sage); background: var(--sage-bg); }
+    .mode-btn .me { font-size: 30px; line-height: 1; }
+
+    /* ── Recording ── */
+    .record-area { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 16px 0; }
+    .record-btn {
+      width: 76px; height: 76px; border-radius: 50%; background: var(--sage); border: none; cursor: pointer;
+      font-size: 30px; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 18px rgba(125,155,118,.4); transition: background .2s, transform .1s;
+    }
+    .record-btn:active { transform: scale(.95); }
+    .record-btn.rec { background: var(--red); box-shadow: 0 4px 18px rgba(229,115,115,.4); animation: pulse 1.2s infinite; }
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0   rgba(229,115,115,.45); }
+      70%  { box-shadow: 0 0 0 22px rgba(229,115,115,0); }
+      100% { box-shadow: 0 0 0 0   rgba(229,115,115,0); }
+    }
+    .record-status { font-size: 13px; color: var(--mid); font-weight: 700; }
+    .waveform { display: flex; align-items: center; gap: 4px; height: 32px; }
+    .wb { width: 4px; border-radius: 2px; background: var(--sage); animation: wv .7s ease-in-out infinite alternate; }
+    .wb:nth-child(1){ height:8px;  animation-delay:0s; }
+    .wb:nth-child(2){ height:22px; animation-delay:.1s; }
+    .wb:nth-child(3){ height:14px; animation-delay:.2s; }
+    .wb:nth-child(4){ height:26px; animation-delay:.3s; }
+    .wb:nth-child(5){ height:10px; animation-delay:.4s; }
+    .wb:nth-child(6){ height:20px; animation-delay:.15s; }
+    .wb:nth-child(7){ height:6px;  animation-delay:.25s; }
+    @keyframes wv { from { transform: scaleY(1); } to { transform: scaleY(.25); } }
+    .transcription-box { background: var(--beige); border-radius: 12px; padding: 12px; font-size: 13px; line-height: 1.6; color: var(--dark); margin: 10px 0; }
+
+    /* ── Confirm modal ── */
+    .confirm-row { display: flex; align-items: flex-start; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--beige); }
+    .confirm-row:last-of-type { border-bottom: none; }
+    .confirm-num  { width: 28px; height: 28px; border-radius: 50%; background: var(--sage-bg); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; color: var(--sage); flex-shrink: 0; }
+    .confirm-info { flex: 1; }
+    .confirm-name { font-size: 14px; font-weight: 800; }
+    .confirm-macros { font-size: 11px; color: var(--mid); margin-top: 2px; }
+    .confirm-kcal { font-size: 16px; font-weight: 900; color: var(--sage); flex-shrink: 0; }
+    .confirm-total { display: flex; justify-content: space-between; align-items: center; padding: 12px 0 4px; border-top: 2px solid var(--beige-dk); margin-top: 4px; }
+    .confirm-total-lbl { font-size: 13px; color: var(--mid); font-weight: 700; }
+    .confirm-total-val { font-size: 20px; font-weight: 900; color: var(--sage); }
+
+    /* ── Spinner / Toast ── */
+    .spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--beige-dk); border-top-color: var(--sage); animation: spin .75s linear infinite; margin: 16px auto; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-msg { text-align: center; color: var(--mid); font-size: 13px; font-weight: 600; }
+    .toast { position: fixed; bottom: 74px; left: 50%; transform: translateX(-50%); background: var(--dark); color: white; padding: 10px 22px; border-radius: 22px; font-size: 13px; font-weight: 700; z-index: 400; opacity: 0; pointer-events: none; transition: opacity .25s; white-space: nowrap; }
+    .toast.show { opacity: 1; }
+
+    /* ── Animations ── */
+    @keyframes bounce { 0%,100% { transform: translateY(0); } 40% { transform: translateY(-5px); } 70% { transform: translateY(-2px); } }
+    .bounce { animation: bounce .5s ease; }
+    @keyframes confettiFall { 0% { transform: translateY(-20px) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
+
+    /* ── Deco / Utils ── */
+    .deco { position: absolute; font-size: 72px; opacity: .06; pointer-events: none; line-height: 1; }
+    .hidden { display: none !important; }
+    .mt8  { margin-top: 8px; }
+    .mt12 { margin-top: 12px; }
+    .mt16 { margin-top: 16px; }
+    .mb0  { margin-bottom: 0; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- HEADER -->
+  <header class="app-header">
+    <div class="header-logo">🌿 Nutrition</div>
+    <div class="header-date" id="header-date"></div>
+  </header>
+
+  <main class="main-content">
+
+    <!-- ═══ TAB RÉSUMÉ ═══ -->
+    <section id="tab-resume" class="tab-pane active">
+      <div class="card">
+        <span class="deco" style="top:-12px;right:-10px;">🌾</span>
+        <div class="card-title">Aujourd'hui</div>
+        <div class="ring-wrap">
+          <div class="ring-rel">
+            <svg width="164" height="164" class="ring-svg">
+              <circle class="ring-bg" cx="82" cy="82" r="66"/>
+              <circle id="ring-fg" class="ring-fg" cx="82" cy="82" r="66" stroke-dasharray="414.7" stroke-dashoffset="414.7"/>
+            </svg>
+            <div class="ring-center">
+              <span id="ring-num" class="ring-num">0</span>
+              <span class="ring-sub">/ <span id="ring-target">–</span> kcal</span>
+              <span class="ring-sub" style="font-size:10px;opacity:.7;">consommées</span>
+            </div>
+          </div>
+        </div>
+        <div class="macro-grid">
+          <div class="mpill mpill-prot" id="mp-prot">
+            <span class="mpill-name">🥩 Protéines</span>
+            <div class="mpill-row"><span class="mpill-val" id="prot-val">0</span><span class="mpill-unit">g</span></div>
+            <div class="mpill-sub">/ <span id="prot-target">–</span> g</div>
+            <div class="mbar-wrap"><div class="mbar" id="prot-bar" style="width:0%"></div></div>
+          </div>
+          <div class="mpill mpill-carb" id="mp-carb">
+            <span class="mpill-name">🌾 Glucides</span>
+            <div class="mpill-row"><span class="mpill-val" id="carb-val">0</span><span class="mpill-unit">g</span></div>
+            <div class="mpill-sub">/ <span id="carb-target">–</span> g</div>
+            <div class="mbar-wrap"><div class="mbar" id="carb-bar" style="width:0%"></div></div>
+          </div>
+          <div class="mpill mpill-fat" id="mp-fat">
+            <span class="mpill-name">🫒 Lipides</span>
+            <div class="mpill-row"><span class="mpill-val" id="fat-val">0</span><span class="mpill-unit">g</span></div>
+            <div class="mpill-sub">/ <span id="fat-target">–</span> g</div>
+            <div class="mbar-wrap"><div class="mbar" id="fat-bar" style="width:0%"></div></div>
+          </div>
+          <div class="mpill mpill-cal" id="mp-cal">
+            <span class="mpill-name">🔥 Calories</span>
+            <div class="mpill-row"><span class="mpill-val" id="kcal-val">0</span><span class="mpill-unit">kcal</span></div>
+            <div class="mpill-sub">/ <span id="kcal-target">–</span> kcal</div>
+            <div class="mbar-wrap"><div class="mbar" id="kcal-bar" style="width:0%;background:#f87171;"></div></div>
+          </div>
+        </div>
+      </div>
+      <!-- Squelette statique — remplacé par app.js dès le chargement -->
+      <div id="meals-container">
+        <div class="card">
+          <div class="meal-hd">
+            <div class="meal-hd-left"><span class="meal-emoji">🌅</span><span class="meal-name">Petit déjeuner</span></div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span class="meal-kcal-lbl">0 kcal</span>
+              <button class="btn-meal-plus" onclick="openInputModal('petit_dej')">+</button>
+            </div>
+          </div>
+          <p class="meal-empty">Aucun aliment enregistré</p>
+        </div>
+        <div class="card">
+          <div class="meal-hd">
+            <div class="meal-hd-left"><span class="meal-emoji">🌞</span><span class="meal-name">Déjeuner</span></div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span class="meal-kcal-lbl">0 kcal</span>
+              <button class="btn-meal-plus" onclick="openInputModal('dejeuner')">+</button>
+            </div>
+          </div>
+          <p class="meal-empty">Aucun aliment enregistré</p>
+        </div>
+        <div class="card">
+          <div class="meal-hd">
+            <div class="meal-hd-left"><span class="meal-emoji">🍎</span><span class="meal-name">Goûter</span></div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span class="meal-kcal-lbl">0 kcal</span>
+              <button class="btn-meal-plus" onclick="openInputModal('gouter')">+</button>
+            </div>
+          </div>
+          <p class="meal-empty">Aucun aliment enregistré</p>
+        </div>
+        <div class="card">
+          <div class="meal-hd">
+            <div class="meal-hd-left"><span class="meal-emoji">🌙</span><span class="meal-name">Dîner</span></div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span class="meal-kcal-lbl">0 kcal</span>
+              <button class="btn-meal-plus" onclick="openInputModal('diner')">+</button>
+            </div>
+          </div>
+          <p class="meal-empty">Aucun aliment enregistré</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ TAB MACROS ═══ -->
+    <section id="tab-macros" class="tab-pane">
+
+      <!-- Glucides -->
+      <div class="card mcard mcard-carb">
+        <div class="mcard-header">
+          <div class="mcard-icon" style="background:var(--orange-bg);">🌾</div>
+          <div class="mcard-title-wrap">
+            <div class="mcard-name">Glucides</div>
+            <div class="mcard-sub">Objectif : <span id="mc-carb-target">–</span> g</div>
+          </div>
+          <div class="mcard-total"><span class="tv" id="mc-carb-val">0</span><span class="tu"> g</span></div>
+        </div>
+        <div class="main-bar-wrap"><div class="main-bar" id="mc-carb-bar" style="width:0%;background:var(--orange);"></div></div>
+        <div class="split-section-title">Répartition</div>
+        <div class="stacked-bar">
+          <div class="stacked-seg" id="mc-carb-simple-seg"  style="background:var(--orange);flex:1;"></div>
+          <div class="stacked-seg" id="mc-carb-complex-seg" style="background:var(--sage);flex:1;"></div>
+        </div>
+        <div class="split-row">
+          <div class="split-item"><span class="split-dot" style="background:var(--orange);"></span>🍭 Rapides&nbsp;<span class="split-val" id="mc-carb-simple-val">0g</span>&nbsp;<span class="split-pct" id="mc-carb-simple-pct"></span></div>
+          <div class="split-item" style="justify-content:flex-end;"><span class="split-dot" style="background:var(--sage);"></span>🌿 Lents&nbsp;<span class="split-val" id="mc-carb-complex-val">0g</span>&nbsp;<span class="split-pct" id="mc-carb-complex-pct"></span></div>
+        </div>
+      </div>
+
+      <!-- Lipides -->
+      <div class="card mcard mcard-fat">
+        <div class="mcard-header">
+          <div class="mcard-icon" style="background:var(--peach-bg);">🫒</div>
+          <div class="mcard-title-wrap">
+            <div class="mcard-name">Lipides</div>
+            <div class="mcard-sub">Objectif : <span id="mc-fat-target">–</span> g</div>
+          </div>
+          <div class="mcard-total"><span class="tv" id="mc-fat-val">0</span><span class="tu"> g</span></div>
+        </div>
+        <div class="main-bar-wrap"><div class="main-bar" id="mc-fat-bar" style="width:0%;background:var(--peach);"></div></div>
+        <div class="split-section-title">Répartition</div>
+        <div class="stacked-bar">
+          <div class="stacked-seg" id="mc-fat-sat-seg"   style="background:var(--red);flex:1;"></div>
+          <div class="stacked-seg" id="mc-fat-unsat-seg" style="background:var(--sage);flex:1;"></div>
+        </div>
+        <div class="split-row">
+          <div class="split-item"><span class="split-dot" style="background:var(--red);"></span>🔴 Saturés&nbsp;<span class="split-val" id="mc-fat-sat-val">0g</span>&nbsp;<span class="split-pct" id="mc-fat-sat-pct"></span></div>
+          <div class="split-item" style="justify-content:flex-end;"><span class="split-dot" style="background:var(--sage);"></span>🟢 Insaturés&nbsp;<span class="split-val" id="mc-fat-unsat-val">0g</span>&nbsp;<span class="split-pct" id="mc-fat-unsat-pct"></span></div>
+        </div>
+      </div>
+
+      <!-- Protéines -->
+      <div class="card mcard mcard-prot">
+        <div class="mcard-header">
+          <div class="mcard-icon" style="background:var(--sage-bg);">🥩</div>
+          <div class="mcard-title-wrap">
+            <div class="mcard-name">Protéines</div>
+            <div class="mcard-sub">Objectif : <span id="mc-prot-target">–</span> g</div>
+          </div>
+          <div class="mcard-total"><span class="tv" id="mc-prot-val">0</span><span class="tu"> g</span></div>
+        </div>
+        <div class="main-bar-wrap"><div class="main-bar" id="mc-prot-bar" style="width:0%;background:var(--sage);"></div></div>
+        <div class="prot-extra" id="mc-prot-pkg"></div>
+      </div>
+
+      <!-- Fibres -->
+      <div class="card mcard mcard-fiber">
+        <div class="mcard-header">
+          <div class="mcard-icon" style="background:#F3F0FF;">🥦</div>
+          <div class="mcard-title-wrap">
+            <div class="mcard-name">Fibres</div>
+            <div class="mcard-sub">Objectif : 25 g / jour</div>
+          </div>
+          <div class="mcard-total"><span class="tv" id="mc-fiber-val">0</span><span class="tu"> g</span></div>
+        </div>
+        <div class="main-bar-wrap"><div class="main-bar" id="mc-fiber-bar" style="width:0%;background:#a78bfa;"></div></div>
+        <div class="fiber-badge hidden" id="mc-fiber-badge"></div>
+      </div>
+
+      <!-- Micronutriments -->
+      <div class="card mcard mcard-micro">
+        <div class="card-title" style="margin-bottom:4px;">🔬 Micronutriments</div>
+        <div class="micro-row">
+          <span class="micro-icon">🧂</span>
+          <div class="micro-info"><div class="micro-name">Sodium</div><div class="micro-target">Objectif : &lt; 2 300 mg</div><div class="micro-bwrap"><div class="micro-bar" id="mc-sodium-bar" style="width:0%;background:#f87171;"></div></div></div>
+          <div class="micro-val" id="mc-sodium-val">0 mg</div>
+        </div>
+        <div class="micro-row">
+          <span class="micro-icon">🦴</span>
+          <div class="micro-info"><div class="micro-name">Calcium</div><div class="micro-target">Objectif : 1 000 mg</div><div class="micro-bwrap"><div class="micro-bar" id="mc-calcium-bar" style="width:0%;background:#64b5f6;"></div></div></div>
+          <div class="micro-val" id="mc-calcium-val">0 mg</div>
+        </div>
+        <div class="micro-row">
+          <span class="micro-icon">⚡</span>
+          <div class="micro-info"><div class="micro-name">Fer</div><div class="micro-target">Objectif : <span id="mc-iron-target-lbl">8–18 mg</span></div><div class="micro-bwrap"><div class="micro-bar" id="mc-iron-bar" style="width:0%;background:#f9a825;"></div></div></div>
+          <div class="micro-val" id="mc-iron-val">0 mg</div>
+        </div>
+        <div class="micro-row">
+          <span class="micro-icon">🍊</span>
+          <div class="micro-info"><div class="micro-name">Vitamine C</div><div class="micro-target">Objectif : <span id="mc-vitc-target-lbl">75–90 mg</span></div><div class="micro-bwrap"><div class="micro-bar" id="mc-vitc-bar" style="width:0%;background:#ff8a65;"></div></div></div>
+          <div class="micro-val" id="mc-vitc-val">0 mg</div>
+        </div>
+        <div class="micro-row">
+          <span class="micro-icon">🍌</span>
+          <div class="micro-info"><div class="micro-name">Potassium</div><div class="micro-target">Objectif : 3 500 mg</div><div class="micro-bwrap"><div class="micro-bar" id="mc-potassium-bar" style="width:0%;background:#81c784;"></div></div></div>
+          <div class="micro-val" id="mc-potassium-val">0 mg</div>
+        </div>
+        <div class="approx-note">⚠️ Valeurs estimées par Claude — à titre indicatif uniquement</div>
+      </div>
+
+    </section>
+
+    <!-- ═══ TAB HISTORIQUE ═══ -->
+    <section id="tab-history" class="tab-pane">
+
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+          <div class="card-title mb0">🔥 Calories / jour</div>
+          <div class="period-toggle">
+            <button class="period-btn active" id="btn-7j"  onclick="loadHistory(7)">7 j</button>
+            <button class="period-btn"        id="btn-30j" onclick="loadHistory(30)">30 j</button>
+          </div>
+        </div>
+        <div style="position:relative;height:190px;">
+          <canvas id="chart-kcal" style="display:none;"></canvas>
+        </div>
+        <p id="chart-hint" style="text-align:center;color:var(--light);font-size:12px;font-weight:600;padding:20px 0;margin:0;">
+          Enregistre des repas pour voir tes graphes
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="card-title mb0" style="margin-bottom:14px;">📈 Protéines · Glucides · Lipides</div>
+        <div style="position:relative;height:190px;">
+          <canvas id="chart-macros" style="display:none;"></canvas>
+        </div>
+        <p id="chart-macros-hint" style="text-align:center;color:var(--light);font-size:12px;font-weight:600;padding:20px 0;margin:0;display:none;"></p>
+      </div>
+
+      <div class="card" id="history-stats" style="display:none;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center;">
+          <div>
+            <div style="font-size:20px;font-weight:900;" id="stat-avg">–</div>
+            <div style="font-size:10px;color:var(--mid);font-weight:800;text-transform:uppercase;letter-spacing:.4px;margin-top:2px;">Moy. kcal</div>
+          </div>
+          <div>
+            <div style="font-size:20px;font-weight:900;color:var(--sage);" id="stat-best">–</div>
+            <div style="font-size:10px;color:var(--mid);font-weight:800;text-transform:uppercase;letter-spacing:.4px;margin-top:2px;">Meilleur</div>
+          </div>
+          <div>
+            <div style="font-size:20px;font-weight:900;" id="stat-days">–</div>
+            <div style="font-size:10px;color:var(--mid);font-weight:800;text-transform:uppercase;letter-spacing:.4px;margin-top:2px;">Jours suivis</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Jours récents</div>
+        <div id="history-list"><div class="spinner"></div></div>
+      </div>
+
+    </section>
+
+    <!-- ═══ TAB PROFIL ═══ -->
+    <section id="tab-profile" class="tab-pane">
+      <div class="card">
+        <span class="deco" style="bottom:-14px;right:-12px;">🥗</span>
+        <div class="card-title">Mon profil</div>
+
+        <div style="margin-bottom:14px;">
+          <label class="form-label">Prénom</label>
+          <input id="p-name" class="form-input" type="text" placeholder="Ton prénom…" />
+        </div>
+        <div style="margin-bottom:14px;">
+          <label class="form-label">Genre</label>
+          <div class="gender-row">
+            <button class="gender-btn active" id="btn-homme" onclick="setGender('homme')"><span class="gi">👨</span>Homme</button>
+            <button class="gender-btn"        id="btn-femme" onclick="setGender('femme')"><span class="gi">👩</span>Femme</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div><label class="form-label">Âge</label><input id="p-age" class="form-input" type="number" placeholder="25" min="10" max="100" /></div>
+          <div><label class="form-label">Poids (kg)</label><input id="p-weight" class="form-input" type="number" placeholder="70" step="0.1" /></div>
+        </div>
+        <div style="margin-bottom:14px;">
+          <label class="form-label">Taille (cm)</label>
+          <input id="p-height" class="form-input" type="number" placeholder="175" />
+        </div>
+        <div style="margin-bottom:18px;">
+          <label class="form-label">Objectif</label>
+          <div class="goal-grid">
+            <button class="goal-btn" id="goal-masse"   onclick="setGoal('masse')"><span class="gi">💪</span>Prise de masse</button>
+            <button class="goal-btn" id="goal-recompo" onclick="setGoal('recompo')"><span class="gi">⚖️</span>Recomposition</button>
+            <button class="goal-btn" id="goal-graisse" onclick="setGoal('graisse')"><span class="gi">🔥</span>Perte de graisse</button>
+          </div>
+        </div>
+        <button class="btn-primary" onclick="saveProfile()">Enregistrer le profil</button>
+        <div class="target-box hidden" id="target-box">
+          <div class="target-box-title">✨ Apports recommandés</div>
+          <div class="target-row"><span class="target-lbl">🔥 Calories</span><span class="target-val" id="t-kcal">–</span></div>
+          <div class="target-row"><span class="target-lbl">🥩 Protéines</span><span class="target-val" id="t-prot">–</span></div>
+          <div class="target-row"><span class="target-lbl">🌾 Glucides</span><span class="target-val" id="t-carb">–</span></div>
+          <div class="target-row"><span class="target-lbl">🫒 Lipides</span><span class="target-val" id="t-fat">–</span></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- BOTTOM NAV -->
+  <nav class="bottom-nav">
+    <button class="nav-tab active" id="nav-resume"  onclick="switchTab('resume')"><span class="ti">🌿</span>Résumé</button>
+    <button class="nav-tab" id="nav-macros"  onclick="switchTab('macros')"><span class="ti">📊</span>Macros</button>
+    <button class="nav-tab" id="nav-history" onclick="switchTab('history')"><span class="ti">📅</span>Historique</button>
+    <button class="nav-tab" id="nav-profile" onclick="switchTab('profile')"><span class="ti">👤</span>Profil</button>
+  </nav>
+
+  <!-- MODAL SAISIE -->
+  <div class="modal-overlay hidden" id="modal-input">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title" id="modal-title">Ajouter un repas</div>
+      <div class="modal-sub"  id="modal-sub">Comment saisir ?</div>
+
+      <div id="mode-select">
+        <div class="mode-grid">
+          <button class="mode-btn" onclick="showMode('voice')"><span class="me">🎤</span>Dictée vocale</button>
+          <button class="mode-btn" onclick="showMode('photo')"><span class="me">📷</span>Photo du repas</button>
+          <button class="mode-btn" onclick="showMode('manual')"><span class="me">✏️</span>Saisie manuelle</button>
+        </div>
+        <button class="btn-secondary" onclick="closeInputModal()">Annuler</button>
+      </div>
+
+      <div id="mode-voice" class="hidden">
+        <div class="record-area">
+          <div class="waveform hidden" id="waveform">
+            <div class="wb"></div><div class="wb"></div><div class="wb"></div>
+            <div class="wb"></div><div class="wb"></div><div class="wb"></div><div class="wb"></div>
+          </div>
+          <button class="record-btn" id="record-btn" onclick="toggleRecording()">🎤</button>
+          <p class="record-status" id="record-status">Appuie pour enregistrer</p>
+        </div>
+        <div id="transcription-area" class="hidden">
+          <p style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--mid);margin-bottom:4px;">Transcription :</p>
+          <div class="transcription-box" id="transcription-text"></div>
+        </div>
+        <div id="voice-loader" class="hidden"><div class="spinner"></div><p class="loading-msg">Analyse en cours…</p></div>
+        <button class="btn-secondary" onclick="showMode(null)">← Retour</button>
+      </div>
+
+      <div id="mode-photo" class="hidden">
+        <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none;" onchange="handlePhoto(event)" />
+        <div style="display:flex;flex-direction:column;align-items:center;gap:16px;padding:20px 0;">
+          <span style="font-size:64px;">📷</span>
+          <p style="text-align:center;font-size:13px;color:var(--mid);font-weight:600;line-height:1.6;">Prends une photo de ton repas.<br>Claude identifiera les aliments visibles.</p>
+          <button class="btn-primary" onclick="document.getElementById('photo-input').click()">Choisir / Prendre une photo</button>
+        </div>
+        <div id="photo-loader" class="hidden"><div class="spinner"></div><p class="loading-msg">Analyse de la photo…</p></div>
+        <button class="btn-secondary" onclick="showMode(null)">← Retour</button>
+      </div>
+
+      <div id="mode-manual" class="hidden">
+        <p style="font-size:13px;color:var(--mid);font-weight:600;margin:8px 0 10px;line-height:1.5;">Décris ton repas — Claude estimera les macros :</p>
+        <textarea id="manual-text" rows="3"
+          placeholder="Ex : poulet grillé 150g, riz basmati 200g, salade verte avec vinaigrette…"
+          style="width:100%;padding:12px;border-radius:12px;border:2px solid var(--beige-dk);background:var(--beige);font-family:'Nunito',sans-serif;font-size:14px;font-weight:600;color:var(--dark);resize:none;outline:none;transition:border-color .2s;line-height:1.5;"
+          onfocus="this.style.borderColor='var(--sage)'" onblur="this.style.borderColor='var(--beige-dk)'"></textarea>
+        <button class="btn-primary mt12" onclick="analyzeManual()">Analyser avec Claude</button>
+        <div id="manual-loader" class="hidden mt12"><div class="spinner"></div><p class="loading-msg">Claude analyse ton repas…</p></div>
+        <button class="btn-secondary" onclick="showMode(null)">← Retour</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL CONFIRMATION -->
+  <div class="modal-overlay hidden" id="modal-confirm">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title">Confirmer le repas</div>
+      <div class="modal-sub">Vérifie les aliments détectés par Claude :</div>
+      <div id="confirm-list"></div>
+      <div class="confirm-total">
+        <span class="confirm-total-lbl">Total estimé</span>
+        <span class="confirm-total-val" id="confirm-total">0 kcal</span>
+      </div>
+      <button class="btn-primary mt12" onclick="confirmMeal()">✅ Enregistrer ce repas</button>
+      <button class="btn-secondary" onclick="document.getElementById('modal-confirm').classList.add('hidden')">Modifier</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
