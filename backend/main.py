@@ -117,6 +117,12 @@ def get_today():
 
 # ── Meals — read ──────────────────────────────────────────────────────────────
 
+# DOIT être déclaré AVANT /meals/{target_date}/{meal_type} (FastAPI match en ordre)
+@app.get("/meals/recent/{meal_type}")
+def get_recent_meals(meal_type: str, limit: int = Query(default=5, ge=1, le=10)):
+    return db.get_recent_meals_by_type(meal_type, limit)
+
+
 @app.get("/meals/{target_date}/{meal_type}")
 def get_meal_by_type(target_date: str, meal_type: str):
     meal = db.get_meal_by_type(target_date, meal_type)
@@ -193,6 +199,16 @@ def delete_meal(meal_id: int):
 @app.get("/history")
 def get_history(days: int = Query(default=7, ge=1, le=30)):
     return db.get_history(days)
+
+
+# ── Plan semaine ─────────────────────────────────────────────────────────────
+
+@app.post("/weekly-plan")
+async def weekly_plan():
+    import ai
+    profile = db.get_profile()
+    history = db.get_history(14)
+    return await ai.generate_weekly_plan(profile, history)
 
 
 # ── Frontend statique ─────────────────────────────────────────────────────────

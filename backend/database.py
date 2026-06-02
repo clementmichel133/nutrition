@@ -152,6 +152,37 @@ def _meal_row_to_dict(row) -> dict:
     return d
 
 
+def get_recent_meals_by_type(meal_type: str, limit: int = 5) -> list[dict]:
+    """Derniers repas distincts pour ce type, hors aujourd'hui, dédupliqués par contenu."""
+    today = date.today().isoformat()
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT * FROM meals
+        WHERE meal_type = ? AND date < ?
+        ORDER BY date DESC, created_at DESC
+        LIMIT 30
+    """, (meal_type, today)).fetchall()
+    conn.close()
+
+    meals = [_meal_row_to_dict(r) for r in rows]
+
+    seen: set[str] = set()
+    unique: list[dict] = []
+    for m in meals:
+        items = m.get("items") or []
+        key = json.dumps(
+            [(it.get("name", ""), it.get("qty_g", 0)) for it in items],
+            ensure_ascii=False,
+        )
+        if key not in seen:
+            seen.add(key)
+            unique.append(m)
+        if len(unique) >= limit:
+            break
+
+    return unique
+
+
 def get_meals_by_date(target_date: str) -> list[dict]:
     conn = get_db()
     rows = conn.execute(
