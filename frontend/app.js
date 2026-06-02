@@ -26,6 +26,8 @@ const MEALS = {
 
 const CIRC = 2 * Math.PI * 66; // circumference for r=66
 
+let _recentMeals = []; // cache pour la modal de saisie
+
 // ════════════════════════════════════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════════════════════════════════════
@@ -548,8 +550,57 @@ function openInputModal(mealType) {
   const meta = MEALS[mealType];
   document.getElementById('modal-title').textContent = meta.emoji + ' ' + meta.label;
   document.getElementById('modal-sub').textContent   = 'Comment saisir ce repas ?';
+  document.getElementById('recent-meals-section').classList.add('hidden');
   showMode(null);
   document.getElementById('modal-input').classList.remove('hidden');
+  loadRecentMeals(mealType);
+}
+
+// ─── Repas récents ────────────────────────────────────────────────────────────
+
+async function loadRecentMeals(mealType) {
+  try {
+    const meals = await api(`/meals/recent/${mealType}?limit=5`);
+    _recentMeals = meals;
+
+    if (!meals.length) return; // section reste masquée
+
+    const today = new Date();
+    const scroll = document.getElementById('recent-meals-scroll');
+
+    scroll.innerHTML = meals.map((m, i) => {
+      const mealDate = new Date(m.date + 'T12:00');
+      const diffDays = Math.round((today - mealDate) / 86_400_000);
+      const dayLabel = diffDays === 1 ? 'hier'
+                     : diffDays === 0 ? 'aujourd\'hui'
+                     : `il y a ${diffDays} j`;
+
+      const items = m.items || [];
+      const preview = items.slice(0, 3).map(it => it.name).join(' · ')
+                    + (items.length > 3 ? ` +${items.length - 3}` : '');
+
+      return `
+        <div class="recent-card" onclick="reuseRecentMeal(${i})">
+          <div class="recent-kcal">${Math.round(m.total_kcal)} kcal</div>
+          <div class="recent-items">${preview}</div>
+          <div class="recent-date">${dayLabel}</div>
+          <button class="btn-recent-add"
+                  onclick="event.stopPropagation(); reuseRecentMeal(${i})">
+            Ajouter
+          </button>
+        </div>`;
+    }).join('');
+
+    document.getElementById('recent-meals-section').classList.remove('hidden');
+  } catch (_) {
+    // historique inaccessible → on garde la section masquée
+  }
+}
+
+function reuseRecentMeal(idx) {
+  const meal = _recentMeals[idx];
+  if (!meal?.items?.length) return;
+  openConfirmModal(meal.items); // réutilise la modal de confirmation existante
 }
 
 function closeInputModal() {
@@ -768,4 +819,148 @@ function launchConfetti() {
 
   toast('🎉 Objectif atteint ! Bravo !');
   setTimeout(() => container.remove(), 4500);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// WEEKLY PLAN
+// ════════════════════════════════════════════════════════════════════════════
+
+const DAY_META = [
+  { key: 'lundi',     emoji: '🌱', bg: 'var(--sage-bg)'   },
+  { key: 'mardi',     emoji: '💪', bg: 'var(--orange-bg)' },
+  { key: 'mercredi',  emoji: '🥗', bg: 'var(--peach-bg)'  },
+  { key: 'jeudi',     emoji: '🔥', bg: '#F0F0FF'          },
+  { key: 'vendredi',  emoji: '🎯', bg: '#FFF0F5'          },
+];
+
+const MEAL_TYPE_META = {
+  petit_dej: { label: 'Petit déjeuner', emoji: '🌅' },
+  dejeuner:  { label: 'Déjeuner',       emoji: '🌞' },
+  diner:     { label: 'Dîner',          emoji: '🌙' },
+};
+
+const SHOP_ICONS = {
+  'Viandes & Poissons': '🥩',
+  'Légumes':            '🥦',
+  'Féculents':          '🌾',
+  'Produits laitiers':  '🥚',
+  'Fruits':             '🍎',
+  'Épicerie':           '🫙',
+};
+
+async function generateWeeklyPlan() {
+  const btn = document.getElementById('btn-generate-week');
+  btn.disabled = true;
+  document.getElementById('week-loader').classList.remove('hidden');
+  document.getElementById('week-days').innerHTML = '';
+  document.getElementById('week-shopping').classList.add('hidden');
+
+  try {
+    const data = await api('/weekly-plan', { method: 'POST' });
+    renderWeeklyPlan(data);
+    toast('✅ Plan semaine généré !');
+  } catch (e) {
+    toast('❌ ' + e.message);
+  } finally {
+    document.getElementById('week-loader').classList.add('hidden');
+    btn.disabled = false;
+  }
+}
+
+function renderWeeklyPlan(data) {
+  const days  = data.days  || [];
+  const daysEl = document.getElementById('week-days');
+
+  daysEl.innerHTML = days.map((d, i) => {
+    const meta   = DAY_META[i] || { key: d.day.toLowerCase(), emoji: '📈', bg: 'var(--beige)' };
+    const meals  = d.meals || {};
+    const isFirst = i === 0;
+
+    const mealsHtml = ['petit_dej', 'dejeuner', 'diner'].map(type => {
+      const m  = meals[type];
+      if (!m) return '';
+      const mt = MEAL_TYPE_META[type];
+      const batchBadge = m.batch
+        ? '<span class="batch-badge">🍳 Batch</span>' : '';
+      const itemsHtml = (m.items || [])
+        .map(it => `<div class="week-meal-item">${it}</div>`).join('');
+
+      return `
+        <div class="week-meal-block">
+          <div class="week-meal-hd">
+            <span>${mt.emoji}</span>
+            <span class="week-meal-type">${mt.label}</span>
+            ${batchBadge}
+          </div>
+          <div class="week-meal-name">${m.name}</div>
+          ${itemsHtml}
+          <div class="week-meal-macros">${m.kcal} kcal &nbsp;·&nbsp; ${m.prot_g}g protéines</div>
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="card" style="margin-bottom:10px;">
+        <div class="day-card-hd" onclick="toggleDay('${meta.key}')">
+          <div class="day-hd-left">
+            <div class="day-dot" style="background:${meta.bg};">${meta.emoji}</div>
+            <div>
+              <div class="day-name-big">${d.day}</div>
+              <div class="day-kcal-hint">${d.total_kcal} kcal &nbsp;·&nbsp; ${d.total_prot}g prot.</div>
+            </div>
+          </div>
+          <span class="day-chevron ${isFirst ? 'open' : ''}" id="chev-${meta.key}">▼</span>
+        </div>
+        <div class="day-body ${isFirst ? 'open' : ''}" id="body-${meta.key}"
+             style="margin-top:${isFirst ? '12' : '0'}px;">
+          ${mealsHtml}
+        </div>
+      </div>`;
+  }).join('');
+
+  if (data.shopping_list) {
+    renderShoppingList(data.shopping_list);
+    document.getElementById('week-shopping').classList.remove('hidden');
+  }
+}
+
+function toggleDay(key) {
+  const body   = document.getElementById('body-' + key);
+  const chev   = document.getElementById('chev-' + key);
+  const isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  body.style.marginTop = isOpen ? '0' : '12px';
+  chev.classList.toggle('open', !isOpen);
+}
+
+function renderShoppingList(list) {
+  document.getElementById('week-shopping-content').innerHTML =
+    Object.entries(list).map(([cat, items]) => {
+      const icon = SHOP_ICONS[cat] || '🛒';
+      const rows = (items || []).map((it, i) => {
+        const id  = `shop-${cat.replace(/[^a-z]/gi, '-')}-${i}`;
+        const note = it.note ? `<div class="shop-note">${it.note}</div>` : '';
+        return `
+          <div class="shop-item" id="shoprow-${id}">
+            <input type="checkbox" class="shop-check" id="${id}"
+                   onchange="toggleShopItem('${id}')">
+            <div class="shop-label">
+              <div class="shop-name">${it.item}</div>
+              <div class="shop-qty">${it.qty}</div>
+              ${note}
+            </div>
+          </div>`;
+      }).join('');
+
+      return `
+        <div class="shop-section">
+          <div class="shop-cat-title">${icon} ${cat}</div>
+          ${rows}
+        </div>`;
+    }).join('');
+}
+
+function toggleShopItem(id) {
+  const row = document.getElementById('shoprow-' + id);
+  const cb  = document.getElementById(id);
+  row.classList.toggle('shop-checked', cb.checked);
 }

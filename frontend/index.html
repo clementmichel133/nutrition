@@ -327,6 +327,97 @@
     .bounce { animation: bounce .5s ease; }
     @keyframes confettiFall { 0% { transform: translateY(-20px) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
 
+    /* ── Repas récents (modal) ── */
+    .recent-scroll {
+      display: flex; gap: 10px;
+      overflow-x: auto; padding-bottom: 6px;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .recent-scroll::-webkit-scrollbar { display: none; }
+
+    .recent-card {
+      min-width: 138px; max-width: 155px; flex-shrink: 0;
+      background: var(--beige); border-radius: 14px; padding: 11px 12px;
+      border: 2px solid transparent; cursor: pointer;
+      display: flex; flex-direction: column; gap: 2px;
+      transition: border-color .2s, background .2s;
+    }
+    .recent-card:hover { border-color: var(--sage); background: var(--sage-bg); }
+    .recent-kcal  { font-size: 17px; font-weight: 900; color: var(--orange); }
+    .recent-items { font-size: 11px; color: var(--mid); font-weight: 600; line-height: 1.4; flex: 1; }
+    .recent-date  { font-size: 10px; color: var(--light); font-weight: 600; }
+    .btn-recent-add {
+      width: 100%; margin-top: 8px; padding: 6px;
+      background: var(--sage); color: white; border: none; border-radius: 8px;
+      font-family: 'Nunito', sans-serif; font-size: 12px; font-weight: 800;
+      cursor: pointer; transition: opacity .15s;
+    }
+    .btn-recent-add:hover { opacity: .85; }
+
+    /* ── Onglet Semaine ── */
+    .day-card-hd {
+      display: flex; align-items: center; justify-content: space-between;
+      cursor: pointer; user-select: none; padding: 2px 0;
+    }
+    .day-hd-left { display: flex; align-items: center; gap: 12px; }
+    .day-dot {
+      width: 42px; height: 42px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; flex-shrink: 0;
+    }
+    .day-name-big  { font-size: 16px; font-weight: 800; }
+    .day-kcal-hint { font-size: 11px; color: var(--mid); margin-top: 1px; }
+    .day-chevron   { font-size: 11px; color: var(--mid); transition: transform .25s; }
+    .day-chevron.open { transform: rotate(180deg); }
+
+    .day-body { max-height: 0; overflow: hidden; transition: max-height .38s ease; }
+    .day-body.open { max-height: 1400px; }
+
+    .week-meal-block { padding: 12px 0; border-bottom: 1px solid var(--beige); }
+    .week-meal-block:last-child { border-bottom: none; }
+    .week-meal-hd {
+      display: flex; align-items: center; gap: 7px; margin-bottom: 5px;
+    }
+    .week-meal-type {
+      font-size: 10px; font-weight: 800; text-transform: uppercase;
+      letter-spacing: .5px; color: var(--mid);
+    }
+    .batch-badge {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 2px 8px; border-radius: 20px;
+      background: var(--orange-bg); color: var(--orange);
+      font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .3px;
+    }
+    .week-meal-name { font-size: 14px; font-weight: 800; margin-bottom: 4px; }
+    .week-meal-item { font-size: 12px; color: var(--mid); padding: 1px 0; }
+    .week-meal-item::before { content: "• "; }
+    .week-meal-macros { font-size: 11px; color: var(--light); font-weight: 600; margin-top: 6px; }
+
+    /* Shopping list */
+    .shop-section { margin-bottom: 18px; }
+    .shop-section:last-child { margin-bottom: 0; }
+    .shop-cat-title {
+      font-size: 11px; font-weight: 800; text-transform: uppercase;
+      letter-spacing: .5px; color: var(--mid); margin-bottom: 8px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .shop-item {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 8px 0; border-bottom: 1px solid var(--beige);
+    }
+    .shop-item:last-child { border-bottom: none; }
+    .shop-check {
+      width: 18px; height: 18px; border-radius: 5px;
+      accent-color: var(--sage); flex-shrink: 0; margin-top: 2px; cursor: pointer;
+    }
+    .shop-label { flex: 1; }
+    .shop-name { font-size: 13px; font-weight: 700; }
+    .shop-qty  { font-size: 12px; color: var(--sage); font-weight: 800; }
+    .shop-note { font-size: 11px; color: var(--light); }
+    .shop-checked .shop-name { text-decoration: line-through; color: var(--light); }
+    .shop-checked .shop-qty  { text-decoration: line-through; color: var(--light); }
+
     /* ── Deco / Utils ── */
     .deco { position: absolute; font-size: 72px; opacity: .06; pointer-events: none; line-height: 1; }
     .hidden { display: none !important; }
@@ -640,13 +731,47 @@
       </div>
     </section>
 
+    <!-- ═══ TAB SEMAINE ═══ -->
+    <section id="tab-week" class="tab-pane">
+
+      <div class="card">
+        <span class="deco" style="top:-12px;right:-10px;">🗓️</span>
+        <div class="card-title">Plan de la semaine</div>
+        <p style="font-size:13px;color:var(--mid);font-weight:600;line-height:1.6;margin-bottom:16px;">
+          Claude génère ton plan repas Lundi–Vendredi adapté à tes objectifs,
+          avec liste de courses pour le batch cooking du dimanche.
+        </p>
+        <button class="btn-primary" id="btn-generate-week" onclick="generateWeeklyPlan()">
+          Générer ma semaine avec Claude
+        </button>
+        <div id="week-loader" class="hidden mt12">
+          <div class="spinner"></div>
+          <p class="loading-msg">Claude prépare ton plan semaine…</p>
+        </div>
+      </div>
+
+      <div id="week-days"></div>
+
+      <div id="week-shopping" class="hidden">
+        <div class="card">
+          <div class="card-title">Liste de courses</div>
+          <p style="font-size:12px;color:var(--mid);font-weight:600;margin-bottom:14px;">
+            Pour 1 personne · Batch cooking du dimanche
+          </p>
+          <div id="week-shopping-content"></div>
+        </div>
+      </div>
+
+    </section>
+
   </main>
 
   <!-- BOTTOM NAV -->
   <nav class="bottom-nav">
     <button class="nav-tab active" id="nav-resume"  onclick="switchTab('resume')"><span class="ti">🌿</span>Résumé</button>
     <button class="nav-tab" id="nav-macros"  onclick="switchTab('macros')"><span class="ti">📊</span>Macros</button>
-    <button class="nav-tab" id="nav-history" onclick="switchTab('history')"><span class="ti">📅</span>Historique</button>
+    <button class="nav-tab" id="nav-week"    onclick="switchTab('week')"><span class="ti">🗓️</span>Semaine</button>
+    <button class="nav-tab" id="nav-history" onclick="switchTab('history')"><span class="ti">📈</span>Histo</button>
     <button class="nav-tab" id="nav-profile" onclick="switchTab('profile')"><span class="ti">👤</span>Profil</button>
   </nav>
 
@@ -657,7 +782,19 @@
       <div class="modal-title" id="modal-title">Ajouter un repas</div>
       <div class="modal-sub"  id="modal-sub">Comment saisir ?</div>
 
+      <!-- Repas récents — masqué si historique vide -->
+      <div id="recent-meals-section" class="hidden">
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--mid);margin-bottom:8px;">
+          Repas récents
+        </div>
+        <div id="recent-meals-scroll" class="recent-scroll"></div>
+        <div style="height:1px;background:var(--beige-dk);margin:14px 0 12px;"></div>
+      </div>
+
       <div id="mode-select">
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--mid);margin-bottom:8px;">
+          Nouvelle saisie
+        </div>
         <div class="mode-grid">
           <button class="mode-btn" onclick="showMode('voice')"><span class="me">🎤</span>Dictée vocale</button>
           <button class="mode-btn" onclick="showMode('photo')"><span class="me">📷</span>Photo du repas</button>
