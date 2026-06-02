@@ -6,7 +6,7 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 import base64
 from datetime import date as date_type
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
@@ -199,6 +199,20 @@ def delete_meal(meal_id: int):
 @app.get("/history")
 def get_history(days: int = Query(default=7, ge=1, le=30)):
     return db.get_history(days)
+
+
+# ── Admin ────────────────────────────────────────────────────────────────────
+
+ADMIN_KEY = "nutrition-seed-2026"
+
+
+@app.post("/admin/seed")
+def admin_seed(x_admin_key: str | None = Header(default=None)):
+    if x_admin_key != ADMIN_KEY:
+        raise HTTPException(status_code=401, detail="Clé admin invalide")
+    import seed_nutrition
+    days = seed_nutrition.run_seed()
+    return {"status": "ok", "message": f"{days} jours insérés"}
 
 
 # ── Plan semaine ─────────────────────────────────────────────────────────────

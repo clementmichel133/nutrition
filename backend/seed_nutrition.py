@@ -439,6 +439,7 @@ def seed_meals() -> None:
 
     print(f"[OK] {inserted_days} jours inseres "
           f"({(END - START).days + 1 - len(SKIP)} attendus)")
+    return inserted_days
 
 
 # ─── Résumé stats ─────────────────────────────────────────────────────────────
@@ -470,13 +471,19 @@ def print_stats() -> None:
 
 # ─── Entrée ───────────────────────────────────────────────────────────────────
 
-def main() -> None:
+def run_seed() -> int:
+    """Exécute le seed complet et retourne le nombre de jours insérés."""
     print(f"\n=== Seed nutritionnel {START} -> {END} ===\n")
     seed_profile()
     clear_range()
-    seed_meals()
+    days = seed_meals()
     print_stats()
     print("\n=== Base de donnees prete ! ===\n")
+    return days
+
+
+def main() -> None:
+    run_seed()
 
 
 if __name__ == "__main__":
