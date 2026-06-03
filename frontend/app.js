@@ -18,6 +18,7 @@ const S = {
   weekPlanConfig:     { meal_types: ['petit_dej', 'dejeuner', 'diner'], batch_size: 4 },
   weeklyPlan:         null,
   addedPlannedMeals:  new Set(),
+  _pendingMealName:   '',
 };
 
 const MEALS = {
@@ -142,17 +143,46 @@ function triggerBounce(id) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// MEAL CARDS
+// MEAL CARDS — plusieurs plats par type, collapsibles
 // ════════════════════════════════════════════════════════════════════════════
 function renderMealCards(meals) {
   const byType = {};
-  meals.forEach(m => { byType[m.meal_type] = m; });
+  meals.forEach(m => {
+    if (!byType[m.meal_type]) byType[m.meal_type] = [];
+    byType[m.meal_type].push(m);
+  });
 
   document.getElementById('meals-container').innerHTML =
     Object.entries(MEALS).map(([type, meta]) => {
-      const meal  = byType[type];
-      const items = meal?.items || [];
-      const kcal  = meal ? Math.round(meal.total_kcal || 0) : 0;
+      const typeMeals = byType[type] || [];
+      const totalKcal = Math.round(typeMeals.reduce((s, m) => s + (m.total_kcal || 0), 0));
+
+      const dishesHtml = typeMeals.map(meal => {
+        const title = meal.meal_name
+          ? `${meal.meal_name} · ${Math.round(meal.total_kcal || 0)} kcal`
+          : `${Math.round(meal.total_kcal || 0)} kcal`;
+        const itemsHtml = (meal.items || []).map((it, idx) => `
+          <div class="meal-item-row">
+            <div class="item-dot"></div>
+            <span class="item-name">${it.name}</span>
+            <span class="item-info">${it.qty_g}g · ${Math.round(it.kcal)} kcal</span>
+            <span class="item-del" onclick="deleteMealItem(${meal.id}, ${idx})">×</span>
+          </div>`).join('');
+        return `
+          <div class="dish-block">
+            <div class="dish-hd" onclick="toggleDish(${meal.id})">
+              <span class="dish-name">${title}</span>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span class="day-chevron" id="dish-chev-${meal.id}">▼</span>
+                <span class="item-del" onclick="event.stopPropagation(); deleteMeal(${meal.id})">×</span>
+              </div>
+            </div>
+            <div class="dish-items" id="dish-items-${meal.id}">
+              ${itemsHtml || '<p class="meal-empty" style="font-size:11px;padding:4px 0;">Vide</p>'}
+            </div>
+          </div>`;
+      }).join('');
+
       return `
         <div class="card">
           <div class="meal-hd">
@@ -161,22 +191,31 @@ function renderMealCards(meals) {
               <span class="meal-name">${meta.label}</span>
             </div>
             <div style="display:flex;align-items:center;gap:10px;">
-              <span class="meal-kcal-lbl">${kcal} kcal</span>
+              <span class="meal-kcal-lbl">${totalKcal ? totalKcal + ' kcal' : ''}</span>
               <button class="btn-meal-plus" onclick="openInputModal('${type}')">+</button>
             </div>
           </div>
-          ${items.length
-            ? items.map(it => `
-                <div class="meal-item-row">
-                  <div class="item-dot"></div>
-                  <span class="item-name">${it.name}</span>
-                  <span class="item-info">${it.qty_g}g · ${Math.round(it.kcal)} kcal</span>
-                  ${meal ? `<span class="item-del" onclick="deleteMeal(${meal.id})">✕</span>` : ''}
-                </div>`).join('')
-            : `<p class="meal-empty">Aucun aliment enregistré</p>`
-          }
+          ${typeMeals.length === 0
+            ? '<p class="meal-empty">Aucun plat enregistré</p>'
+            : dishesHtml}
         </div>`;
     }).join('');
+}
+
+function toggleDish(mealId) {
+  const el   = document.getElementById('dish-items-' + mealId);
+  const chev = document.getElementById('dish-chev-' + mealId);
+  if (!el) return;
+  const open = el.classList.toggle('open');
+  if (chev) chev.classList.toggle('open', open);
+}
+
+async function deleteMealItem(mealId, itemIndex) {
+  try {
+    const result = await api(`/meals/${mealId}/items/${itemIndex}`, { method: 'DELETE' });
+    toast(result.deleted_meal ? 'Plat supprimé' : 'Ingrédient supprimé');
+    loadToday();
+  } catch (e) { toast('❌ ' + e.message); }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -564,16 +603,38 @@ function openInputModal(mealType) {
 
 // ─── Planned meals helpers ────────────────────────────────────────────────────
 
+// Correspondance clé technique → morceau du nom en français dans "serves"
+const MEAL_SERVE_MATCH = {
+  petit_dej: 'petit',
+  dejeuner:  'déjeuner',
+  gouter:    'goût',
+  diner:     'dîner',
+};
+
 function getPlannedMeals(mealType) {
-  if (!S.weeklyPlan?.days) return [];
-  const seen = new Set();
+  if (!S.weeklyPlan?.cooking_sessions) return [];
+  const match = MEAL_SERVE_MATCH[mealType] || mealType;
+  const seen  = new Set();
   const result = [];
-  for (const day of S.weeklyPlan.days) {
-    const m = day.meals?.[mealType];
-    if (m?.name && !seen.has(m.name)) {
-      seen.add(m.name);
-      result.push({ ...m, _day: day.day, _added: S.addedPlannedMeals.has(m.name) });
-    }
+
+  for (const sess of S.weeklyPlan.cooking_sessions) {
+    const serves = sess.serves || [];
+    const matchingServes = serves.filter(s => s.toLowerCase().includes(match));
+    if (!matchingServes.length || seen.has(sess.recipe)) continue;
+
+    seen.add(sess.recipe);
+    const m = sess.macros_per_portion || {};
+    result.push({
+      name:    sess.recipe,
+      items:   (sess.ingredients || []).map(i => `${i.item} ${i.qty}`),
+      kcal:    m.kcal,
+      prot_g:  m.prot_g,
+      carb_g:  m.carb_g,
+      fat_g:   m.fat_g,
+      _day:    matchingServes[0].split(' ')[0],
+      _added:  S.addedPlannedMeals.has(sess.recipe),
+      batch:   (sess.portions || 1) > 1,
+    });
   }
   return result;
 }
@@ -640,19 +701,24 @@ async function reuseRecentMeal(idx) {
   if (!m) return;
 
   if (m._type === 'planned') {
-    const plan  = m._plan;
-    const items = plan.items || [];
-    if (!items.length) return;
-    closeInputModal();
-    try {
-      const data = await api('/meals/text', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ text: items.join(', ') }),
-      });
-      S.addedPlannedMeals.add(plan.name);
-      openConfirmModal(data.items);
-    } catch (e) { toast('❌ ' + e.message); }
+    const plan = m._plan;
+    // Utilise macros_per_portion directement — pas d'appel Claude supplémentaire
+    const fakeItem = {
+      name:              plan.name,
+      qty_g:             350,   // portion estimée
+      kcal:              plan.kcal    || 0,
+      prot_g:            plan.prot_g  || 0,
+      carb_g:            plan.carb_g  || 0,
+      fat_g:             plan.fat_g   || 0,
+      carb_simple_g:     0,
+      carb_complex_g:    plan.carb_g  || 0,
+      fat_saturated_g:   0,
+      fat_unsaturated_g: plan.fat_g   || 0,
+      fiber_g: 0, sodium_mg: 0, calcium_mg: 0,
+      iron_mg: 0, vitamin_c_mg: 0, potassium_mg: 0,
+    };
+    S.addedPlannedMeals.add(plan.name);
+    openConfirmModal([fakeItem]);
     return;
   }
 
@@ -745,7 +811,7 @@ async function _uploadVoice() {
     document.getElementById('voice-loader').classList.add('hidden');
     document.getElementById('transcription-area').classList.remove('hidden');
     document.getElementById('transcription-text').textContent = data.transcription;
-    openConfirmModal(data.items);
+    openConfirmModal(data.items, data.meal_name);
   } catch (_) {
     document.getElementById('voice-loader').classList.add('hidden');
     document.getElementById('record-status').textContent = 'Erreur — réessaie';
@@ -767,7 +833,7 @@ async function handlePhoto(e) {
     const data = await fetch(API + '/meals/photo', { method: 'POST', body: form })
       .then(r => { if (!r.ok) throw new Error(); return r.json(); });
     document.getElementById('photo-loader').classList.add('hidden');
-    openConfirmModal(data.items);
+    openConfirmModal(data.items, data.meal_name);
   } catch (_) {
     document.getElementById('photo-loader').classList.add('hidden');
     toast('❌ Analyse photo échouée');
@@ -789,7 +855,7 @@ async function analyzeManual() {
       body:    JSON.stringify({ text }),
     });
     document.getElementById('manual-loader').classList.add('hidden');
-    openConfirmModal(data.items);
+    openConfirmModal(data.items, data.meal_name);
   } catch (e) {
     document.getElementById('manual-loader').classList.add('hidden');
     toast('❌ ' + e.message);
@@ -799,9 +865,16 @@ async function analyzeManual() {
 // ════════════════════════════════════════════════════════════════════════════
 // CONFIRM MODAL
 // ════════════════════════════════════════════════════════════════════════════
-function openConfirmModal(items) {
-  S.pendingItems = items;
+function openConfirmModal(items, mealName = '') {
+  S.pendingItems       = items;
+  S._pendingMealName   = mealName || '';
   closeInputModal();
+
+  const nameEl = document.getElementById('confirm-meal-name');
+  if (nameEl) {
+    nameEl.textContent   = mealName || '';
+    nameEl.style.display = mealName ? 'block' : 'none';
+  }
 
   const total = items.reduce((s, i) => s + (i.kcal || 0), 0);
   document.getElementById('confirm-list').innerHTML = items.map((it, i) => `
@@ -818,18 +891,44 @@ function openConfirmModal(items) {
   document.getElementById('modal-confirm').classList.remove('hidden');
 }
 
-async function confirmMeal() {
+async function _saveMeal() {
   const today = new Date().toISOString().split('T')[0];
+  await api('/meals/confirm', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({
+      date:       today,
+      meal_type:  S.mealType,
+      meal_name:  S._pendingMealName || '',
+      description:'',
+      items:      S.pendingItems,
+    }),
+  });
+}
+
+async function confirmMeal() {
   try {
-    await api('/meals/confirm', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ date: today, meal_type: S.mealType, description: '', items: S.pendingItems }),
-    });
+    await _saveMeal();
     document.getElementById('modal-confirm').classList.add('hidden');
     toast('✅ Repas enregistré !');
     loadToday();
   } catch (e) { toast('❌ ' + e.message); }
+}
+
+async function addAnotherDish() {
+  try {
+    await _saveMeal();
+    document.getElementById('modal-confirm').classList.add('hidden');
+    toast('Plat ajouté !');
+    loadToday();
+    openInputModal(S.mealType);   // rouvre la modal pour le même repas
+  } catch (e) { toast('❌ ' + e.message); }
+}
+
+function modifyMeal() {
+  document.getElementById('modal-confirm').classList.add('hidden');
+  document.getElementById('modal-input').classList.remove('hidden');
+  showMode(null);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -946,65 +1045,163 @@ async function generateWeeklyPlan() {
   }
 }
 
+// Émoji par moment de cuisine
+const COOK_SESSION_ICONS = {
+  'Dimanche soir':        '🌙',
+  'Dimanche soir (prép.)':'🥣',
+  'Lundi soir':           '🌙',
+  'Mardi soir':           '🌙',
+  'Mercredi soir':        '🌙',
+  'Jeudi soir':           '🌙',
+  'Vendredi soir':        '🌙',
+  'Matin':                '☀️',
+};
+const COOK_SESSION_BG = {
+  'Dimanche soir':        'var(--peach-bg)',
+  'Dimanche soir (prép.)':'var(--sage-bg)',
+  'Matin':                'var(--orange-bg)',
+};
+
 function renderWeeklyPlan(data) {
-  const days  = data.days  || [];
-  const daysEl = document.getElementById('week-days');
+  const sessions = data.cooking_sessions || [];
+  const daysEl   = document.getElementById('week-days');
 
-  daysEl.innerHTML = days.map((d, i) => {
-    const meta   = DAY_META[i] || { key: d.day.toLowerCase(), emoji: '📈', bg: 'var(--beige)' };
-    const meals  = d.meals || {};
-    const isFirst = i === 0;
+  if (!sessions.length) {
+    daysEl.innerHTML = '<p style="text-align:center;color:var(--light);padding:20px;">Aucune session générée.</p>';
+    return;
+  }
 
-    const batchN    = S.weekPlanConfig.batch_size;
-    const mealsHtml = Object.keys(meals).map(type => {
-      const m  = meals[type];
-      if (!m) return '';
-      const mt = MEAL_TYPE_META[type] || { label: type, emoji: '🍽️' };
-      const batchBadge = m.batch
-        ? `<span class="batch-badge">🍳 Batch ×${batchN}</span>` : '';
-      const itemsHtml = (m.items || [])
-        .map(it => `<div class="week-meal-item">${it}</div>`).join('');
+  // Grouper par cook_on pour l'affichage
+  const grouped = new Map();
+  for (const s of sessions) {
+    const key = s.cook_on || 'Non défini';
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(s);
+  }
+
+  daysEl.innerHTML = [...grouped.entries()].map(([cookOn, sessionList], gi) => {
+    const icon    = COOK_SESSION_ICONS[cookOn] || '🍳';
+    const bg      = COOK_SESSION_BG[cookOn]    || 'var(--beige-dk)';
+    const isFirst = gi === 0;
+    const key     = 'cook-' + gi;
+
+    const sessionsHtml = sessionList.map(sess => {
+      const m = sess.macros_per_portion || {};
+
+      const ingrHtml = (sess.ingredients || []).map(ing =>
+        `<div class="week-meal-item">• ${ing.item} — <strong>${ing.qty}</strong></div>`
+      ).join('');
+
+      const servesStr = (sess.serves || []).join(' · ');
 
       return `
         <div class="week-meal-block">
-          <div class="week-meal-hd">
-            <span>${mt.emoji}</span>
-            <span class="week-meal-type">${mt.label}</span>
-            ${batchBadge}
+          <div class="week-meal-name">${sess.recipe}</div>
+          <div style="margin:8px 0 4px;">
+            <div class="split-section-title">Ingrédients — total ${sess.portions} portion${(sess.portions||1) > 1 ? 's' : ''}</div>
+            ${ingrHtml}
           </div>
-          <div class="week-meal-name">${m.name}</div>
-          ${itemsHtml}
-          <div class="week-meal-macros">
-            ${m.kcal} kcal &nbsp;·&nbsp; P&nbsp;${m.prot_g}g
+          <div class="week-meal-macros" style="margin-top:8px;">
+            ${m.kcal || '–'} kcal &nbsp;·&nbsp; P&nbsp;${m.prot_g || '–'}g
             ${m.carb_g != null ? `&nbsp;·&nbsp; G&nbsp;${m.carb_g}g` : ''}
             ${m.fat_g  != null ? `&nbsp;·&nbsp; L&nbsp;${m.fat_g}g`  : ''}
+            <small style="color:var(--light);"> / portion</small>
+          </div>
+          <div style="margin-top:8px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
+            <span class="batch-badge" style="background:var(--orange-bg);color:var(--orange);">
+              🍳 Batch ×${sess.portions || 1}
+            </span>
+            <span style="font-size:11px;color:var(--mid);font-weight:700;">📅 ${servesStr}</span>
           </div>
         </div>`;
     }).join('');
 
+    const totalSessions = sessionList.length;
     return `
       <div class="card" style="margin-bottom:10px;">
-        <div class="day-card-hd" onclick="toggleDay('${meta.key}')">
+        <div class="day-card-hd" onclick="toggleDay('${key}')">
           <div class="day-hd-left">
-            <div class="day-dot" style="background:${meta.bg};">${meta.emoji}</div>
+            <div class="day-dot" style="background:${bg};font-size:18px;">${icon}</div>
             <div>
-              <div class="day-name-big">${d.day}</div>
-              <div class="day-kcal-hint">${d.total_kcal} kcal &nbsp;·&nbsp; ${d.total_prot}g prot.</div>
+              <div class="day-name-big">${cookOn}</div>
+              <div class="day-kcal-hint">${totalSessions} plat${totalSessions > 1 ? 's' : ''} à préparer</div>
             </div>
           </div>
-          <span class="day-chevron ${isFirst ? 'open' : ''}" id="chev-${meta.key}">▼</span>
+          <span class="day-chevron ${isFirst ? 'open' : ''}" id="chev-${key}">▼</span>
         </div>
-        <div class="day-body ${isFirst ? 'open' : ''}" id="body-${meta.key}"
+        <div class="day-body ${isFirst ? 'open' : ''}" id="body-${key}"
              style="margin-top:${isFirst ? '12' : '0'}px;">
-          ${mealsHtml}
+          ${sessionsHtml}
         </div>
       </div>`;
   }).join('');
+
+  renderConsumptionPlan(sessions);
 
   if (data.shopping_list) {
     renderShoppingList(data.shopping_list);
     document.getElementById('week-shopping').classList.remove('hidden');
   }
+}
+
+function renderConsumptionPlan(sessions) {
+  // Supprimer l'ancien planning si présent
+  document.getElementById('week-consumption-plan')?.remove();
+
+  // Construire le planning jour par jour depuis les sessions
+  const DAYS_ORDER = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
+  const dayMeals   = {};   // { "Lundi": [{mealLabel, recipe, macros}] }
+
+  for (const sess of sessions) {
+    for (const serve of (sess.serves || [])) {
+      const words    = serve.split(' ');
+      const day      = words[0];
+      const mealLbl  = words.slice(1).join(' ');
+      if (!dayMeals[day]) dayMeals[day] = [];
+      dayMeals[day].push({ mealLbl, recipe: sess.recipe, macros: sess.macros_per_portion || {} });
+    }
+  }
+
+  const sortedDays = DAYS_ORDER.filter(d => dayMeals[d]);
+  if (!sortedDays.length) return;
+
+  const planHtml = sortedDays.map(day => {
+    const meals = dayMeals[day];
+    const totalKcal = meals.reduce((s, m) => s + (m.macros.kcal || 0), 0);
+    const rows = meals.map(m => `
+      <div style="display:flex;align-items:center;justify-content:space-between;
+                  padding:5px 0;border-bottom:1px solid var(--beige);">
+        <div>
+          <div style="font-size:10px;font-weight:800;text-transform:capitalize;
+                      letter-spacing:.3px;color:var(--mid);">${m.mealLbl}</div>
+          <div style="font-size:13px;font-weight:700;">${m.recipe}</div>
+        </div>
+        <div style="font-size:12px;color:var(--orange);font-weight:900;white-space:nowrap;margin-left:8px;">
+          ${m.macros.kcal || '–'} kcal
+        </div>
+      </div>`).join('');
+
+    return `
+      <div style="margin-bottom:12px;">
+        <div style="font-size:14px;font-weight:900;margin-bottom:4px;">
+          ${day}
+          <span style="font-size:11px;font-weight:600;color:var(--mid);">(${totalKcal} kcal)</span>
+        </div>
+        ${rows}
+      </div>`;
+  }).join('');
+
+  // Insérer avant la liste de courses
+  const planCard = document.createElement('div');
+  planCard.id        = 'week-consumption-plan';
+  planCard.className = 'card';
+  planCard.style.marginBottom = '14px';
+  planCard.innerHTML = `
+    <div class="card-title" style="margin-bottom:12px;">📅 Planning de consommation</div>
+    ${planHtml}`;
+
+  const shoppingEl = document.getElementById('week-shopping');
+  shoppingEl.parentNode.insertBefore(planCard, shoppingEl);
 }
 
 function toggleDay(key) {

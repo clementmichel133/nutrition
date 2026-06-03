@@ -72,6 +72,7 @@ class MealConfirmIn(BaseModel):
     date: str
     meal_type: str
     description: str = ""
+    meal_name: str = ""
     items: list[FoodItem]
 
     @field_validator("meal_type")
@@ -140,28 +141,26 @@ class TextMealIn(BaseModel):
 @app.post("/meals/text")
 async def meals_text(data: TextMealIn):
     import ai
-    items = await ai.analyze_food_text(data.text)
-    return {"items": items}
+    return await ai.analyze_food_text(data.text)  # {meal_name, items}
 
 
 @app.post("/meals/voice")
 async def meals_voice(audio: UploadFile = File(...)):
-    import ai  # imported here — disponible à partir du Sprint 3
+    import ai
     audio_bytes = await audio.read()
     mime_type = audio.content_type or "audio/webm"
-    text = await ai.transcribe_voice(audio_bytes, mime_type=mime_type)
-    items = await ai.analyze_food_text(text)
-    return {"transcription": text, "items": items}
+    text   = await ai.transcribe_voice(audio_bytes, mime_type=mime_type)
+    result = await ai.analyze_food_text(text)      # {meal_name, items}
+    return {"transcription": text, **result}
 
 
 @app.post("/meals/photo")
 async def meals_photo(image: UploadFile = File(...)):
     import ai
     image_bytes = await image.read()
-    image_b64 = base64.b64encode(image_bytes).decode()
-    media_type = image.content_type or "image/jpeg"
-    items = await ai.analyze_food_photo(image_b64, media_type=media_type)
-    return {"items": items}
+    image_b64   = base64.b64encode(image_bytes).decode()
+    media_type  = image.content_type or "image/jpeg"
+    return await ai.analyze_food_photo(image_b64, media_type=media_type)  # {meal_name, items}
 
 
 # ── Meals — confirm & delete ──────────────────────────────────────────────────
@@ -178,6 +177,7 @@ def meals_confirm(data: MealConfirmIn):
         "date":        data.date,
         "meal_type":   data.meal_type,
         "description": data.description,
+        "meal_name":   data.meal_name,
         "items":       items,
         "total_kcal":  round(total_kcal, 1),
         "total_prot":  round(total_prot, 1),
@@ -192,6 +192,21 @@ def delete_meal(meal_id: int):
     if not db.delete_meal(meal_id):
         raise HTTPException(status_code=404, detail="Repas non trouvé")
     return {"deleted": meal_id}
+
+
+@app.delete("/meals/{meal_id}/items/{item_index}")
+def delete_meal_item(meal_id: int, item_index: int):
+    meal = db.get_meal(meal_id)
+    if not meal:
+        raise HTTPException(status_code=404, detail="Repas non trouvé")
+    items = list(meal.get("items") or [])
+    if not (0 <= item_index < len(items)):
+        raise HTTPException(status_code=404, detail="Ingrédient non trouvé")
+    items.pop(item_index)
+    if not items:
+        db.delete_meal(meal_id)
+        return {"deleted_meal": meal_id}
+    return db.update_meal_items(meal_id, items)
 
 
 # ── History ───────────────────────────────────────────────────────────────────

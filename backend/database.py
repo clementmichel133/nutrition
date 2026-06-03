@@ -57,6 +57,7 @@ def init_db():
             date              TEXT NOT NULL,
             meal_type         TEXT NOT NULL,
             description       TEXT,
+            meal_name         TEXT DEFAULT '',
             items             TEXT,
             total_kcal        REAL,
             total_prot        REAL,
@@ -94,6 +95,7 @@ def _migrate_meals():
         ("total_iron",         "REAL DEFAULT 0"),
         ("total_vit_c",        "REAL DEFAULT 0"),
         ("total_potassium",    "REAL DEFAULT 0"),
+        ("meal_name",          "TEXT DEFAULT ''"),
     ]
     conn = get_db()
     for col, typ in new_cols:
@@ -370,14 +372,14 @@ def insert_meal(data: dict) -> dict:
 
     conn = get_db()
     cur = conn.execute("""
-        INSERT INTO meals (date, meal_type, description, items,
+        INSERT INTO meals (date, meal_type, description, meal_name, items,
                            total_kcal, total_prot, total_carb, total_fat,
                            total_fiber, total_carb_simple, total_carb_complex,
                            total_fat_sat, total_fat_unsat,
                            total_sodium, total_calcium, total_iron,
                            total_vit_c, total_potassium,
                            created_at)
-        VALUES (:date, :meal_type, :description, :items,
+        VALUES (:date, :meal_type, :description, :meal_name, :items,
                 :total_kcal, :total_prot, :total_carb, :total_fat,
                 :total_fiber, :total_carb_simple, :total_carb_complex,
                 :total_fat_sat, :total_fat_unsat,
@@ -388,6 +390,7 @@ def insert_meal(data: dict) -> dict:
         "date":               data["date"],
         "meal_type":          data["meal_type"],
         "description":        data.get("description", ""),
+        "meal_name":          data.get("meal_name", ""),
         "items":              items_json,
         "total_kcal":         data.get("total_kcal", 0),
         "total_prot":         data.get("total_prot", 0),
@@ -406,6 +409,51 @@ def insert_meal(data: dict) -> dict:
         "created_at":         now,
     })
     meal_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return get_meal(meal_id)
+
+
+def update_meal_items(meal_id: int, items: list[dict]) -> dict | None:
+    """Remplace les items d'un repas et recalcule tous les totaux."""
+    items_json = json.dumps(items, ensure_ascii=False)
+    conn = get_db()
+    conn.execute("""
+        UPDATE meals SET
+            items             = :items,
+            total_kcal        = :total_kcal,
+            total_prot        = :total_prot,
+            total_carb        = :total_carb,
+            total_fat         = :total_fat,
+            total_fiber       = :total_fiber,
+            total_carb_simple = :total_carb_simple,
+            total_carb_complex= :total_carb_complex,
+            total_fat_sat     = :total_fat_sat,
+            total_fat_unsat   = :total_fat_unsat,
+            total_sodium      = :total_sodium,
+            total_calcium     = :total_calcium,
+            total_iron        = :total_iron,
+            total_vit_c       = :total_vit_c,
+            total_potassium   = :total_potassium
+        WHERE id = :meal_id
+    """, {
+        "items":             items_json,
+        "meal_id":           meal_id,
+        "total_kcal":        _sum(items, "kcal"),
+        "total_prot":        _sum(items, "prot_g"),
+        "total_carb":        _sum(items, "carb_g"),
+        "total_fat":         _sum(items, "fat_g"),
+        "total_fiber":       _sum(items, "fiber_g"),
+        "total_carb_simple": _sum(items, "carb_simple_g"),
+        "total_carb_complex":_sum(items, "carb_complex_g"),
+        "total_fat_sat":     _sum(items, "fat_saturated_g"),
+        "total_fat_unsat":   _sum(items, "fat_unsaturated_g"),
+        "total_sodium":      _sum(items, "sodium_mg"),
+        "total_calcium":     _sum(items, "calcium_mg"),
+        "total_iron":        _sum(items, "iron_mg"),
+        "total_vit_c":       _sum(items, "vitamin_c_mg"),
+        "total_potassium":   _sum(items, "potassium_mg"),
+    })
     conn.commit()
     conn.close()
     return get_meal(meal_id)
